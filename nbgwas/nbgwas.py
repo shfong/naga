@@ -19,12 +19,17 @@ import pandas as pd
 from scipy.sparse import coo_matrix,csc_matrix
 from scipy.sparse.linalg import expm, expm_multiply
 import time
+import warnings
 
-def _check_link(link): 
+def _read_link(link): 
+    """Checks link to be string or pandas DataFrame"""
+
     if isinstance(link, str): 
         return Nbgwas._read_table(link) 
     elif isinstance(link, pd.DataFrame): 
         return link 
+    elif link is None: 
+        return link
     else: 
         raise TypeError("Only strings (presumed to be file location) " + \
                             "or pandas DataFrame is allowed!")
@@ -69,6 +74,13 @@ def assign_snps_to_genes(snp,
     ------
     assigned_pvals : dict or pd.Dataframe
         A dictionary of genes to p-value (see to_table above)
+
+    TODO
+    ----
+    - Test me!
+    - Expose column names for pc
+    - Change pc to something more descriptive
+    - Add an option for caching bin edges
     """
     
     if agg_method not in ['min', 'median', 'mean'] and not hasattr(agg_method, '__call__'): 
@@ -92,6 +104,7 @@ def assign_snps_to_genes(snp,
                 assigned_pvals[n][0].append(pvals[i])
                 assigned_pvals[n][1].append(bps[i])
                 
+    # Aggregate p-values
     if agg_method == 'min': 
         f = np.argmin
     elif agg_method == 'median': 
@@ -190,7 +203,6 @@ class Nbgwas(object):
 
     TODO
     ----
-    - Error handling when both summaries are presented (Should only just use one)  
     - Refactor out p-value assignment (with different methods) as different functions
     - Combines the heat diffusion code as one function (with a switch in behavior for kernel vs  no kernel)
     - Missing output code (to networkx subgraph, Upload to NDEx)
@@ -198,27 +210,41 @@ class Nbgwas(object):
     - Include logging
     """
     def __init__(self, 
+                 network = 'PC_net',
                  snp_level_summary=None, 
                  gene_level_summary=None, 
-                 network=None,
+                 protein_coding_table=None, 
+                 window_size=0,  
+                 agg_method='min', 
+                 chrom_col='hg18chr', 
+                 bp_col='bp', 
+                 pval_col='pval'
                  ): 
         
-        if snp_level_summary is not None: 
-            raise NotImplementedError("TBA")
+        if snp_level_summary is not None and gene_level_summary is not None: 
+            warnings.warn("snp_level_summary argument will be ignored since both \
+            snp_level_summary and gene_level_summary are provided!")
+        elif snp_level_summary is None and gene_level_summary is None: 
+            raise ValueError("Either snp_level_summary or gene_level_summary must be provided!")
 
-        self.snp_level_summary = _check_link(snp_level_summary)
-        self.gene_level_summary = _check_link(gene_level_summary) 
+        self.snp_level_summary = _read_link(snp_level_summary)
+        self.gene_level_summary = _read_link(gene_level_summary) 
 
         if network is None: 
-            self.network = Nbgwas._load_pcnet() 
-
+            self.network = None
+        elif isinstance(network, nx.Graph): 
+            self.network = network
         else: 
-            if isinstance(network, nx.Graph): 
-                self.network = network
-            else: 
-                raise TypeError("Network must be a networkx Graph object")
+            raise TypeError("Network must be a networkx Graph object")
 
         self.node_names = [self.network.node[n]['name'] for n in self.network.nodes()]
+        self.protein_coding_table = _read_link(protein_coding_table)
+
+        self.window_size = window_size
+        self.agg_method = agg_method
+        self.chrom_col = chrom_col
+        self.bp_col = bp_col
+        self.pval_col = pval_col
 
     @staticmethod
     def _read_table(file):
@@ -235,6 +261,24 @@ class Nbgwas(object):
                                                           uuid='f93f402c-86d4-11e7-a10d-0ac135e8bacf')
 
         return network_niceCx.to_networkx()
+
+    def assign_pvalues(self, **kwargs): 
+        """Wrapper for assign_snps_to_genes"""
+
+        if self.protein_coding_table is None: 
+            raise ValueError("protein_coding_table attribute is missing!")
+        
+        assign_pvalues = assign_snps_to_genes(self.snp_level_summary, 
+                                              self.protein_coding_table,
+                                              **kwargs)
+
+        if self.gene_level_summary is not None: 
+            warnings.warn("The existing gene_level_summary was overwritten!")
+
+        self.gene_level_summary = assign_pvalues
+
+        return self
+
 
     def diffuse(self, threshold=5e-6, kernel=None): 
         """Runs random walk with pre-computed kernel 
