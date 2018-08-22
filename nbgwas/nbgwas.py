@@ -34,6 +34,13 @@ def _read_link(link):
         raise TypeError("Only strings (presumed to be file location) " + \
                             "or pandas DataFrame is allowed!")
 
+def _read_snp_file(file): 
+    return pd.read_csv(file, header=0, index_col=None, sep='\s+')
+
+def _read_pc_file(file): 
+    return pd.read_csv(file, index_col=0, sep='\s+', 
+                        names=['Chromosome', 'Start', 'End'])
+
 def assign_snps_to_genes(snp, 
                          pc, 
                          window_size=0, 
@@ -122,8 +129,10 @@ def assign_snps_to_genes(snp,
             assigned_pvals[i] = [len(j[0]), j[0][p], j[1][p]] #nSNPS, TopSNP-pvalue, TopSNP-pos
 
     if to_table: 
-        assigned_df = pd.DataFrame(assigned, index=['nSNPS', 'TopSNP P-Value', 'TopSNP Position']).T
+        assigned_df = pd.DataFrame(assigned_pvals, index=['nSNPS', 'TopSNP P-Value', 'TopSNP Position']).T
         assigned_df = pd.concat([pc, assigned_df], axis=1)
+        assigned_df.index.name = 'Gene'
+        assigned_df = assigned_df.reset_index()
     
         return assigned_df
     
@@ -218,33 +227,37 @@ class Nbgwas(object):
                  agg_method='min', 
                  chrom_col='hg18chr', 
                  bp_col='bp', 
-                 pval_col='pval'
+                 pval_col='pval', 
+                 verbose=True
                  ): 
         
         if snp_level_summary is not None and gene_level_summary is not None: 
             warnings.warn("snp_level_summary argument will be ignored since both \
-            snp_level_summary and gene_level_summary are provided!")
+snp_level_summary and gene_level_summary are provided!")
         elif snp_level_summary is None and gene_level_summary is None: 
             raise ValueError("Either snp_level_summary or gene_level_summary must be provided!")
 
-        self.snp_level_summary = _read_link(snp_level_summary)
+        self.snp_level_summary = _read_snp_file(snp_level_summary)
         self.gene_level_summary = _read_link(gene_level_summary) 
 
         if network is None: 
-            self.network = None
+            raise ValueError("A network must be given!")
+        elif network == 'PC_net': 
+            self.network = self._load_pcnet()
         elif isinstance(network, nx.Graph): 
             self.network = network
         else: 
             raise TypeError("Network must be a networkx Graph object")
 
         self.node_names = [self.network.node[n]['name'] for n in self.network.nodes()]
-        self.protein_coding_table = _read_link(protein_coding_table)
+        self.protein_coding_table = _read_pc_file(protein_coding_table)
 
         self.window_size = window_size
         self.agg_method = agg_method
         self.chrom_col = chrom_col
         self.bp_col = bp_col
         self.pval_col = pval_col
+        self.verbose = verbose
 
     @staticmethod
     def _read_table(file):
@@ -270,6 +283,7 @@ class Nbgwas(object):
         
         assign_pvalues = assign_snps_to_genes(self.snp_level_summary, 
                                               self.protein_coding_table,
+                                              to_table=True,
                                               **kwargs)
 
         if self.gene_level_summary is not None: 
@@ -300,7 +314,7 @@ class Nbgwas(object):
             raise NotImplementedError("Need to define the location to the kernel! TODO: Add non-pre-computed kernel code")
 
 
-        if not hasattr(self, laplacian): 
+        if not hasattr(self, "laplacian"): 
             self.laplacian = csc_matrix(nx.laplacian_matrix(self.network))
 
         name='prop'
@@ -317,7 +331,7 @@ class Nbgwas(object):
         prop_val_matrix = np.dot(prop_vector_matrix, self.kernel)
         prop_val_table = pd.DataFrame(prop_val_matrix, index = prop_vector_matrix.index, columns = prop_vector_matrix.columns)
         
-        self.boosted_pvalues = prop_val_table.T.sort_values(by='prop', ascending=False).head()
+        self.boosted_pvalues = prop_val_table.T.sort_values(by='prop', ascending=False)
 
         return self
 
@@ -329,7 +343,7 @@ class Nbgwas(object):
         threshold : float
             Minimum p-value to diffuse the p-value
         """
-        if not hasattr(self, laplacian): 
+        if not hasattr(self, "laplacian"): 
             self.laplacian = csc_matrix(nx.laplacian_matrix(self.network))
             
         input_list = list(self.gene_level_summary[self.gene_level_summary['TopSNP P-Value'] < threshold]['Gene'])
