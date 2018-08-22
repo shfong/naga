@@ -18,6 +18,7 @@ import numpy as np
 import pandas as pd 
 from scipy.sparse import coo_matrix,csc_matrix
 from scipy.sparse.linalg import expm, expm_multiply
+from .propagation import random_walk_rst, get_common_indices
 import time
 import warnings
 
@@ -237,7 +238,12 @@ snp_level_summary and gene_level_summary are provided!")
         elif snp_level_summary is None and gene_level_summary is None: 
             raise ValueError("Either snp_level_summary or gene_level_summary must be provided!")
 
-        self.snp_level_summary = _read_snp_file(snp_level_summary)
+        if snp_level_summary is not None: 
+            self.snp_level_summary = _read_snp_file(snp_level_summary) #TODO: BUG here, allow for pd.DataFrame input
+            
+        if protein_coding_table is not None:
+             self.protein_coding_table = _read_pc_file(protein_coding_table) #TODO: ditto
+            
         self.gene_level_summary = _read_link(gene_level_summary) 
 
         if network is None: 
@@ -250,7 +256,6 @@ snp_level_summary and gene_level_summary are provided!")
             raise TypeError("Network must be a networkx Graph object")
 
         self.node_names = [self.network.node[n]['name'] for n in self.network.nodes()]
-        self.protein_coding_table = _read_pc_file(protein_coding_table)
 
         self.window_size = window_size
         self.agg_method = agg_method
@@ -306,6 +311,7 @@ snp_level_summary and gene_level_summary are provided!")
         kernel : str
             Location of the kernel (expects to be in HDF5 format)        
         """
+        
         if kernel is not None: 
             self.kernel = pd.read_hdf(kernel)
             network_genes = list(self.kernel.index)
@@ -343,6 +349,7 @@ snp_level_summary and gene_level_summary are provided!")
         threshold : float
             Minimum p-value to diffuse the p-value
         """
+        
         if not hasattr(self, "laplacian"): 
             self.laplacian = csc_matrix(nx.laplacian_matrix(self.network))
             
@@ -354,6 +361,38 @@ snp_level_summary and gene_level_summary are provided!")
         out_dict= {'prop': out_vector,'Gene':self.node_names}
         heat_df=pd.DataFrame.from_dict(out_dict).set_index('Gene')
 
-        self.boosted_pvalues = heat_df.sort_values(by='prop', ascending=False).head()
+        self.boosted_pvalues = heat_df.sort_values(by='prop', ascending=False)
 
+        return self
+    
+    def random_walk(self, threshold=5e-6, alpha=0.5): 
+        """Runs random walk iteratively 
+        
+        Parameters 
+        ----------
+        threshold: float
+            Minimum p-value to diffuse the p-value
+        alpha : float
+            The restart probability
+        """
+        
+        heat = self.gene_level_summary.copy()
+        heat = heat.set_index('Gene')['TopSNP P-Value']
+        heat = (heat < 5e-6).astype(int)
+        
+        mat = nx.adjacency_matrix(self.network)
+        
+        nodes = [self.network.node[i]['name'] for i in self.network.nodes()]
+        common_indices, pc_ind, heat_ind = get_common_indices(nodes, heat.index)
+        heat_mat = heat.values[np.newaxis, ...]
+        
+        F0 = heat_mat[:, heat_ind]
+        A = mat[:, pc_ind][pc_ind, :]
+
+        out = random_walk_rst(F0, A, 0.5)
+        df = pd.DataFrame(list(zip(common_indices, np.array(out.todense()).ravel().tolist())), columns=['Genes', 'prop'])
+        df = df.set_index('Genes')
+        
+        self.boosted_pvalues = df.sort_values(by='prop', ascending=False)
+        
         return self
