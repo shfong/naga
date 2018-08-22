@@ -10,6 +10,7 @@ Notes
 """
 
 from __future__ import print_function
+from collections import defaultdict
 import ndex2
 import ndex2.client as nc
 import networkx as nx
@@ -28,60 +29,121 @@ def _check_link(link):
         raise TypeError("Only strings (presumed to be file location) " + \
                             "or pandas DataFrame is allowed!")
 
-def min_p(SNP_summary, gene_positions, window):
-    """Assigns SNP p-value to gene
-    
-    This function assigns the SNP's p-value to a gene if the SNP is within a certain 
-    window of the gene.
+def assign_snps_to_genes(snp, 
+                         pc, 
+                         window_size=0, 
+                         to_table=False, 
+                         agg_method='min', 
+                         chrom_col='hg18chr', 
+                         bp_col='bp', 
+                         pval_col='pval'): 
+
+    """Assigns SNP to genes
 
     Parameters
     ----------
-    SNP_summary : pd.DataFrame 
-        A pandas DataFrame that contains the SNP information
-    gene_positions : pd.DataFrame
-        A pandas DataFrame that lists each coding gene's start and end position on the
-        chromosome
-    window : float
-        A number (in kilobases) that defines how large the window is.
-
-    TODO 
-    ---- 
-    - Move this function to the Nbgwas class (or at least call this function)
+    snp : pd.DataFrame
+        pandas DataFrame of SNP summary statistics from GWAS. It must have the 
+        following three columns
+        - chromosome (chrom_col): the chromosome the SNP is on
+        - basepair (bp_col): the base pair number 
+        - p-value (pval_col): the GWAS associated p-value
+    pc : pd.DataFrame
+        pandas DataFrame of gene coding region
+    window_size : int or float
+        Move the start site of a gene back and move the end site forward
+        by a fixed `window_size` amount. 
+    agg_method : str or callable function
+        Method to aggregate multiple p-values associated with a SNP
+        - min : takes the minimum p-value
+        - median : takes the median of all associated p-values
+        - mean : takes the average of all assocaited p-values
+        - <'callable' function> : a function that takes a list and output 
+          a value. The output of this value will be used in the final dictionary.
+    to_table : bool
+        If to_table is true, the output is a pandas dataframe that augments the pc 
+        dataframe with number of SNPs, top SNP P-value, and the position of the SNP 
+        for each gene. Otherwise, a dictionary of gene to top SNP P-value is returned.
+          
+    Output
+    ------
+    assigned_pvals : dict or pd.Dataframe
+        A dictionary of genes to p-value (see to_table above)
     """
-
-    starttime = time.time()
-    dist = window*1000
-    genelist = list(gene_positions.index)
-    min_p_list = []
-    SNP_summary['Chr']=SNP_summary['Chr'].astype(str)
     
-    for gene in genelist:
-        gene_info = gene_positions.ix[gene]
-        chrom = str(gene_info['Chr'])
-        start = gene_info['Start']
-        stop = gene_info['End']
-
-        # Get all SNPs on same chromosome
-        SNP_summary_filt1 = SNP_summary[SNP_summary['Chr']==chrom]
-        # Get all SNPs after window start position
-        SNP_summary_filt2 = SNP_summary_filt1[SNP_summary_filt1['Pos'] >= (start-dist)]
-        # Get all SNPs before window end position
-        SNP_summary_filt3 = SNP_summary_filt2[SNP_summary_filt2['Pos'] <= (stop+dist)]
+    if agg_method not in ['min', 'median', 'mean'] and not hasattr(agg_method, '__call__'): 
+        raise ValueError('agg_method must be min, median, mean or a callable function!')
+    
+    window_size = int(window_size)
+    
+    assigned_pvals = defaultdict(lambda: [[], []])
+    for chrom, df in snp.groupby(chrom_col): 
+        bins, names = _get_bins(pc.loc[pc.iloc[:,0] == str(chrom)], window_size=window_size) #TODO: HARDCODE
+        bps = df[bp_col].values
+        binned = np.digitize(bps, bins)
         
-        # Get min_p statistics for this gene
-        if len(SNP_summary_filt3) >= 1:
-            min_p_data = SNP_summary_filt3.ix[SNP_summary_filt3['P-Value'].argmin()]
-            min_p_list.append([gene, chrom, start, stop, SNP_summary_filt3.shape[0], min_p_data['Marker'], int(min_p_data['Pos']), min_p_data['P-Value']])
-        else:
-            min_p_list.append([gene, chrom, start, stop, 0, None, None, None])
+        names = names[binned]
+        pvals = df[pval_col].values
+        
+        index = np.array([ind for ind, i in enumerate(names) if i != []])
+        
+        for i in index: 
+            for n in names[i]: 
+                assigned_pvals[n][0].append(pvals[i])
+                assigned_pvals[n][1].append(bps[i])
+                
+    if agg_method == 'min': 
+        f = np.argmin
+    elif agg_method == 'median': 
+        f = lambda x: np.argwhere(np.median(x)).ravel()
+    elif agg_method == 'mean': 
+        f = lambda x: np.argwhere(np.mean(x)).ravel()
+    else: 
+        f = agg_method    
+
+    for i,j in assigned_pvals.items(): 
+        if not to_table: 
+            assigned_pvals[i] = j[0][f(j[0])]
+        else: 
+            p = f(j[0])
+            assigned_pvals[i] = [len(j[0]), j[0][p], j[1][p]] #nSNPS, TopSNP-pvalue, TopSNP-pos
+
+    if to_table: 
+        assigned_df = pd.DataFrame(assigned, index=['nSNPS', 'TopSNP P-Value', 'TopSNP Position']).T
+        assigned_df = pd.concat([pc, assigned_df], axis=1)
     
-    min_p_table = pd.DataFrame(min_p_list, columns = ['Gene', 'Chr', 'Gene Start', 'Gene End', 'nSNPs', 'TopSNP', 'TopSNP Pos', 'TopSNP P-Value'])
-    min_p_table['SNP Distance'] = abs(min_p_table['TopSNP Pos'].subtract(min_p_table['Gene Start']))
-    min_p_table = min_p_table.dropna().sort_values(by=['TopSNP P-Value', 'Chr', 'Gene Start'])
+        return assigned_df
     
-    print("P-Values assigned to genes:", time.time()-starttime, 'seconds')
+    return assigned_pvals
+
+def _get_bins(df, window_size=0, cols=[1,2]): 
+    """Convert start and end sites to bin edges 
     
-    return min_p_table
+    Given the start and end site (defined by cols) in the dataframe, 
+    a set of bin edges are defined which can be augmented by window_size. 
+    Each bin is then annotated by a name (assumed to be in the index. 
+    Note that each bin can have multiple names due to overlapping start 
+    and end sites. If the name is empty, then that bin is not occupied by 
+    a gene.
+    """
+    names = df.index.values
+    
+    arr = df.iloc[:, cols].values.astype(int)
+    
+    arr[:, 0] -= window_size
+    arr[:, 1] += window_size
+    
+    bins = np.sort(arr.reshape(-1))
+    
+    mapped_names = [[] for _ in range(len(bins) + 1)] 
+    
+    for ind, (i,j) in enumerate(arr): 
+        vals = np.argwhere((bins > i) & (bins <= j)).ravel()
+        
+        for v in vals: 
+            mapped_names[v].append(names[ind])
+            
+    return bins, np.array(mapped_names)
 
 # Load gene positions from file                                                                                            
 def load_gene_pos(gene_pos_file, delimiter='\t', header=False, cols='0,1,2,3'):
