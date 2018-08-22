@@ -28,12 +28,12 @@ setup(
 	],
 	packages=find_packages(exclude=['os', 're', 'time']),
 	install_requires=[
-            'networkx',
+            'networkx==1.11', #ndex2 requires networks 1.11
             'numpy',
             'matplotlib',
             'pandas',
             'scipy',
             'seaborn', 
-	    'ndex2', 
-	    'pytables']
+	    	'ndex2', 
+	    	'tables']
 )
