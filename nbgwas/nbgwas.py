@@ -10,7 +10,7 @@ Notes
 """
 
 from __future__ import print_function
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
 import ndex2
 import ndex2.client as nc
 import networkx as nx
@@ -195,6 +195,39 @@ def load_gene_pos(gene_pos_file, delimiter='\t', header=False, cols='0,1,2,3'):
     
     return gene_positions.set_index('Gene')
 
+def binarize(a, threshold=5e-6): 
+    """Binarize array based on threshold"""
+
+    if not isinstance(a, np.ndarray): 
+        a = np.array(a)
+
+    binned = np.zeros(a.shape)
+    binned[a < threshold] = 1
+
+    return binned
+
+def neg_log_val(a, floor=None): 
+    """Negative log of an array
+
+    Parameters
+    ----------
+    a : `numpy ndarray` or list
+        Array to be transformed
+    floor : float
+        Threshold after transformation. Below which, the 
+        transformed array will be floored to 0.
+    """
+
+    if not isinstance(a, np.ndarray): 
+        a = np.array(a)
+
+    vals = -np.log(a)
+
+    if floor is not None: 
+        vals[vals < floor] = 0  
+
+    return vals
+
 class Nbgwas(object): 
     """Interface to Network Boosted GWAS
 
@@ -216,7 +249,9 @@ class Nbgwas(object):
 
     TODO
     ----
-    - Refactor out p-value assignment (with different methods) as different functions
+    - Standardize SNP and gene level input and protein coding region (file format)
+        - Document what columns are needed for each of the dataframe
+    - Accept any UUID from NDEx for the load network
     - Combines the heat diffusion code as one function (with a switch in behavior for kernel vs  no kernel)
     - Missing output code (to networkx subgraph, Upload to NDEx)
     - Missing utility functions (Manhanttan plots)   
@@ -303,7 +338,7 @@ snp_level_summary and gene_level_summary are provided!")
 
     @property 
     def pvalues(self): 
-        """dict: `str` to `float`: Dictionary that maps genes to p-values
+        """OrderedDict: `str` to `float`: Dictionary that maps genes to p-values
 
         Requires gene_level_summary to be set (i.e. Does not run assign_pvalues 
         automatically. For now, pvalues cannot be reassigned.
@@ -312,7 +347,7 @@ snp_level_summary and gene_level_summary are provided!")
         if not hasattr(self, "_pvalues"): 
             try: 
                 self._pvalues = self.gene_level_summary[['Gene', 'TopSNP P-Value']]
-                self._pvalues = self._pvalues.set_index('Gene').to_dict()['TopSNP P-Value']
+                self._pvalues = OrderedDict(self._pvalues.set_index('Gene').to_dict()['TopSNP P-Value'])
             except AttributeError: 
                 raise AttributeError("No gene level summary found! Please use assign_pvalues to convert SNP to gene-level summary or input a gene-level summary!")
             except KeyError: 
@@ -351,11 +386,72 @@ snp_level_summary and gene_level_summary are provided!")
         self._gene_level_summary = df
         del self.pvalues 
 
-    def convert_to_heat(self):
-        """Convert p-values to heat"""
-        pass
+    def convert_to_heat(self, method='binarize', **kwargs):
+        """Convert p-values to heat
 
-    def diffuse(self, threshold=5e-6, kernel=None): 
+        Parameters
+        ----------
+        method : str
+            Must be in 'binarize' or 'neg_log'
+            "binarize" uses the `binarize` function while "neg_log" uses the
+            `neg_log_val` function. 
+        kwargs 
+            Any additional keyword arguments to be passed into the above functions
+
+        TODO
+        ----
+        - Implement other methods to convert p-values to heat
+        """
+
+        allowed = ['binarize', "neg_log"] 
+        if method not in allowed: 
+            raise ValueError("Method must be in %s" % allowed)
+
+        vals = np.array(list(self.pvalues.values()))
+        if method == 'binarize': 
+            heat = binarize(vals, threshold=kwargs.get('threshold', 5e-6))
+        elif method == 'neg_log': 
+            heat = neg_log_val(vals, floor=kwargs.get('floor', None))
+
+        self.heat = pd.DataFrame(heat[...,np.newaxis], index = list(self.pvalues.keys()), columns=['Heat'])
+        self.heat = self.heat.reindex(self.node_names).fillna(0)
+
+        return self
+
+    def random_walk(self, alpha=0.5): 
+        """Runs random walk iteratively 
+        
+        Parameters 
+        ----------
+        threshold: float
+            Minimum p-value to diffuse the p-value
+        alpha : float
+            The restart probability
+        """
+               
+        if not hasattr(self, "heat"): 
+            warnings.warn("Attribute heat is not found. Generating using the binarize method.")
+            self.convert_to_heat() 
+
+        if not hasattr(self, "adjacency_matrix"): 
+            self.adjacency_matrix = nx.adjacency_matrix(self.network)
+        
+        nodes = [self.network.node[i]['name'] for i in self.network.nodes()]
+        common_indices, pc_ind, heat_ind = get_common_indices(nodes, self.heat.index)
+        heat_mat = self.heat.values.T
+        
+        F0 = heat_mat[:, heat_ind]
+        A = mat[:, pc_ind][pc_ind, :]
+
+        out = random_walk_rst(F0, A, 0.5)
+        df = pd.DataFrame(list(zip(common_indices, np.array(out.todense()).ravel().tolist())), columns=['Genes', 'prop'])
+        df = df.set_index('Genes')
+        
+        self.boosted_pvalues = df.sort_values(by='prop', ascending=False)
+        
+        return self
+
+    def random_walk_with_kernel(self, threshold=5e-6, kernel=None): 
         """Runs random walk with pre-computed kernel 
         
         This propagation method relies on a pre-computed kernel. 
@@ -373,31 +469,34 @@ snp_level_summary and gene_level_summary are provided!")
             network_genes = list(self.kernel.index)
 
         else: 
-            raise NotImplementedError("Need to define the location to the kernel! TODO: Add non-pre-computed kernel code")
+            warning.warn("No kernel was given! Running random_walk instead")
+            self.random_walk() 
 
+            return self
 
         if not hasattr(self, "laplacian"): 
             self.laplacian = csc_matrix(nx.laplacian_matrix(self.network))
 
         name='prop'
-        threshold_genes = {}
-        prop_vectors = []
+        # threshold_genes = {}
+        # prop_vectors = []
             
-        threshold_genes[name] = self.gene_level_summary[self.gene_level_summary['TopSNP P-Value'] < threshold]
-        prop_vector = (self.gene_level_summary.set_index('Gene').loc[network_genes, 'TopSNP P-Value'] < threshold).astype(float)
-        prop_vector.name = name
-        prop_vectors.append(prop_vector)
-        prop_vector_matrix = pd.concat(prop_vectors, axis=1).loc[network_genes].T
+        # threshold_genes[name] = self.gene_level_summary[self.gene_level_summary['TopSNP P-Value'] < threshold]
+        # prop_vector = (self.gene_level_summary.set_index('Gene').loc[network_genes, 'TopSNP P-Value'] < threshold).astype(float)
+        # prop_vector.name = name
+        # prop_vectors.append(prop_vector)
+        # prop_vector_matrix = pd.concat(prop_vectors, axis=1).loc[network_genes].T
 
         #propagate with pre-computed kernel
-        prop_val_matrix = np.dot(prop_vector_matrix, self.kernel)
+        prop_val_matrix = np.dot(self.heat.values.T, self.kernel)
+        #prop_val_matrix = np.dot(prop_vector_matrix, self.kernel)
         prop_val_table = pd.DataFrame(prop_val_matrix, index = prop_vector_matrix.index, columns = prop_vector_matrix.columns)
         
         self.boosted_pvalues = prop_val_table.T.sort_values(by='prop', ascending=False)
 
         return self
 
-    def heat_diffusion(self, threshold=5e-6): 
+    def heat_diffusion(self): 
         """Runs heat diffusion without a pre-computed kernel
         
         Parameters
@@ -409,9 +508,14 @@ snp_level_summary and gene_level_summary are provided!")
         if not hasattr(self, "laplacian"): 
             self.laplacian = csc_matrix(nx.laplacian_matrix(self.network))
             
-        input_list = list(self.gene_level_summary[self.gene_level_summary['TopSNP P-Value'] < threshold]['Gene'])
-        input_vector = np.array([n in input_list for n in self.node_names])
-        out_vector=expm_multiply(-self.laplacian, input_vector, start=0, stop=0.1, endpoint=True)[-1]
+        # input_list = list(self.gene_level_summary[self.gene_level_summary['TopSNP P-Value'] < threshold]['Gene'])
+        # input_vector = np.array([n in input_list for n in self.node_names])
+
+        if not hasattr(self, "heat"): 
+            warnings.warn("Attribute heat is not found. Generating using the binarize method.")
+            self.convert_to_heat()
+
+        out_vector=expm_multiply(-self.laplacian, self.heat.values.ravel(), start=0, stop=0.1, endpoint=True)[-1]
 
         #out_dict= dict(zip(node_names, out_vector))
         out_dict= {'prop': out_vector,'Gene':self.node_names}
@@ -419,36 +523,4 @@ snp_level_summary and gene_level_summary are provided!")
 
         self.boosted_pvalues = heat_df.sort_values(by='prop', ascending=False)
 
-        return self
-    
-    def random_walk(self, threshold=5e-6, alpha=0.5): 
-        """Runs random walk iteratively 
-        
-        Parameters 
-        ----------
-        threshold: float
-            Minimum p-value to diffuse the p-value
-        alpha : float
-            The restart probability
-        """
-        
-        heat = self.gene_level_summary.copy()
-        heat = heat.set_index('Gene')['TopSNP P-Value']
-        heat = (heat < 5e-6).astype(int)
-        
-        mat = nx.adjacency_matrix(self.network)
-        
-        nodes = [self.network.node[i]['name'] for i in self.network.nodes()]
-        common_indices, pc_ind, heat_ind = get_common_indices(nodes, heat.index)
-        heat_mat = heat.values[np.newaxis, ...]
-        
-        F0 = heat_mat[:, heat_ind]
-        A = mat[:, pc_ind][pc_ind, :]
-
-        out = random_walk_rst(F0, A, 0.5)
-        df = pd.DataFrame(list(zip(common_indices, np.array(out.todense()).ravel().tolist())), columns=['Genes', 'prop'])
-        df = df.set_index('Genes')
-        
-        self.boosted_pvalues = df.sort_values(by='prop', ascending=False)
-        
         return self
