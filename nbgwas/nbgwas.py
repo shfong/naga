@@ -252,6 +252,7 @@ class Nbgwas(object):
     - Standardize SNP and gene level input and protein coding region (file format)
         - Document what columns are needed for each of the dataframe
     - Accept any UUID from NDEx for the load network
+    - Factor out the numpy to pandas code after all diffusion functions
     - Combines the heat diffusion code as one function (with a switch in behavior for kernel vs  no kernel)
     - Missing output code (to networkx subgraph, Upload to NDEx)
     - Missing utility functions (Manhanttan plots)   
@@ -441,7 +442,7 @@ snp_level_summary and gene_level_summary are provided!")
         heat_mat = self.heat.values.T
         
         F0 = heat_mat[:, heat_ind]
-        A = mat[:, pc_ind][pc_ind, :]
+        A = self.adjacency_matrix[:, pc_ind][pc_ind, :]
 
         out = random_walk_rst(F0, A, 0.5)
         df = pd.DataFrame(list(zip(common_indices, np.array(out.todense()).ravel().tolist())), columns=['Genes', 'prop'])
@@ -466,10 +467,9 @@ snp_level_summary and gene_level_summary are provided!")
         
         if kernel is not None: 
             self.kernel = pd.read_hdf(kernel)
-            network_genes = list(self.kernel.index)
 
         else: 
-            warning.warn("No kernel was given! Running random_walk instead")
+            warnings.warn("No kernel was given! Running random_walk instead")
             self.random_walk() 
 
             return self
@@ -477,22 +477,19 @@ snp_level_summary and gene_level_summary are provided!")
         if not hasattr(self, "laplacian"): 
             self.laplacian = csc_matrix(nx.laplacian_matrix(self.network))
 
-        name='prop'
-        # threshold_genes = {}
-        # prop_vectors = []
-            
-        # threshold_genes[name] = self.gene_level_summary[self.gene_level_summary['TopSNP P-Value'] < threshold]
-        # prop_vector = (self.gene_level_summary.set_index('Gene').loc[network_genes, 'TopSNP P-Value'] < threshold).astype(float)
-        # prop_vector.name = name
-        # prop_vectors.append(prop_vector)
-        # prop_vector_matrix = pd.concat(prop_vectors, axis=1).loc[network_genes].T
+        if not hasattr(self, "heat"): 
+            warnings.warn("Attribute heat is not found. Generating using the binarize method.")
+            self.convert_to_heat() 
+
+        network_genes = list(self.kernel.index)
+
+        heat = self.heat.reindex(network_genes).fillna(0) #Not saving heat to object because the kernel index may not match network's
 
         #propagate with pre-computed kernel
-        prop_val_matrix = np.dot(self.heat.values.T, self.kernel)
-        #prop_val_matrix = np.dot(prop_vector_matrix, self.kernel)
-        prop_val_table = pd.DataFrame(prop_val_matrix, index = prop_vector_matrix.index, columns = prop_vector_matrix.columns)
-        
-        self.boosted_pvalues = prop_val_table.T.sort_values(by='prop', ascending=False)
+        prop_val_matrix = np.dot(heat.values.T, self.kernel)
+        prop_val_table = pd.DataFrame(prop_val_matrix, index = heat.columns, columns = heat.index)
+
+        self.boosted_pvalues = prop_val_table.T.sort_values(by='Heat', ascending=False)
 
         return self
 
@@ -507,17 +504,12 @@ snp_level_summary and gene_level_summary are provided!")
         
         if not hasattr(self, "laplacian"): 
             self.laplacian = csc_matrix(nx.laplacian_matrix(self.network))
-            
-        # input_list = list(self.gene_level_summary[self.gene_level_summary['TopSNP P-Value'] < threshold]['Gene'])
-        # input_vector = np.array([n in input_list for n in self.node_names])
 
         if not hasattr(self, "heat"): 
             warnings.warn("Attribute heat is not found. Generating using the binarize method.")
             self.convert_to_heat()
 
         out_vector=expm_multiply(-self.laplacian, self.heat.values.ravel(), start=0, stop=0.1, endpoint=True)[-1]
-
-        #out_dict= dict(zip(node_names, out_vector))
         out_dict= {'prop': out_vector,'Gene':self.node_names}
         heat_df=pd.DataFrame.from_dict(out_dict).set_index('Gene')
 
