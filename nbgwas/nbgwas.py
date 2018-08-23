@@ -170,7 +170,10 @@ def _get_bins(df, window_size=0, cols=[1,2]):
 
 # Load gene positions from file                                                                                            
 def load_gene_pos(gene_pos_file, delimiter='\t', header=False, cols='0,1,2,3'):
-    """Loads the gene position dataframe"""
+    """Loads the gene position dataframe
+    
+    DEPRECATED
+    """
 
     # Check for valid 'cols' parameter                                                                                 
     try:
@@ -244,7 +247,7 @@ snp_level_summary and gene_level_summary are provided!")
         if protein_coding_table is not None:
              self.protein_coding_table = _read_pc_file(protein_coding_table) #TODO: ditto
             
-        self.gene_level_summary = _read_link(gene_level_summary) 
+        self._gene_level_summary = _read_link(gene_level_summary) 
 
         if network is None: 
             raise ValueError("A network must be given!")
@@ -298,6 +301,59 @@ snp_level_summary and gene_level_summary are provided!")
 
         return self
 
+    @property 
+    def pvalues(self): 
+        """dict: `str` to `float`: Dictionary that maps genes to p-values
+
+        Requires gene_level_summary to be set (i.e. Does not run assign_pvalues 
+        automatically. For now, pvalues cannot be reassigned.
+        """
+
+        if not hasattr(self, "_pvalues"): 
+            try: 
+                self._pvalues = self.gene_level_summary[['Gene', 'TopSNP P-Value']]
+                self._pvalues = self._pvalues.set_index('Gene').to_dict()['TopSNP P-Value']
+            except AttributeError: 
+                raise AttributeError("No gene level summary found! Please use assign_pvalues to convert SNP to gene-level summary or input a gene-level summary!")
+            except KeyError: 
+                raise KeyError("'Gene' and 'TopSNP P-value' columns were not found in gene_level_summary!")
+        
+        return self._pvalues
+
+    @pvalues.deleter
+    def pvalues(self): 
+        if hasattr(self, "_pvalues"):
+            del self._pvalues
+
+    @property 
+    def gene_level_summary(self): 
+        """pd.DataFrame : DataFrame that includes the gene_level_summary
+
+        Handles error if no gene_level summary is given. If the gene_level_summary is
+        overwritten, the DataFrame must include ['Gene', 'Top_SNP P-value'] and the 
+        previously created pvalues would be destroyed.
+        """
+
+        try: 
+            return self._gene_level_summary
+        except AttributeError: 
+            raise AttributeError("No gene level summary found! Please use assign_pvalues to convert SNP to gene-level summary or input a gene-level summary!")
+    
+    @gene_level_summary.setter
+    def gene_level_summary(self, df): 
+        if not isinstance(df, pd.DataFrame): 
+            raise ValueError("gene_level_summary must be a pandas DataFrame")
+
+        required_headers = set(['Gene', 'TopSNP P-Value']) 
+        if len(required_headers.intersection(set(df.columns))) != len(required_headers): 
+            raise ValueError("Input dataframe must include 'Gene' and 'TopSNP P-Value' in its columns")
+
+        self._gene_level_summary = df
+        del self.pvalues 
+
+    def convert_to_heat(self):
+        """Convert p-values to heat"""
+        pass
 
     def diffuse(self, threshold=5e-6, kernel=None): 
         """Runs random walk with pre-computed kernel 
