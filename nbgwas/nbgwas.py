@@ -240,8 +240,13 @@ class Nbgwas(object):
         A DataFrame object that holds the gene level summary or a file that points 
         to a text file     
     network : networkx object
-        The network to propagate the p-value over. If None, PC-net (Huang, Cell Systems, 2018) 
-        will be pulled from NDEx instead.
+        The network to propagate the p-value over.
+    uuid : str
+        The unique identifier that corresponds to an NDEx network
+    protein_coding_table : str or pd.DataFrame
+        A DataFrame object that defines the start and end position and chromosome number for 
+        each coding gene. This mapping will be used for the snp to gene assignment
+    
 
     Note
     ----
@@ -259,24 +264,22 @@ class Nbgwas(object):
     - Include logging
     """
     def __init__(self, 
-                 network = 'PC_net',
                  snp_level_summary=None, 
                  gene_level_summary=None, 
+                 network = None,
+                 uuid = 'f93f402c-86d4-11e7-a10d-0ac135e8bacf', #pcnet
                  protein_coding_table=None, 
-                 window_size=0,  
-                 agg_method='min', 
-                 chrom_col='hg18chr', 
-                 bp_col='bp', 
-                 pval_col='pval', 
                  verbose=True
                  ): 
         
-        if snp_level_summary is not None and gene_level_summary is not None: 
-            warnings.warn("snp_level_summary argument will be ignored since both \
-snp_level_summary and gene_level_summary are provided!")
-        elif snp_level_summary is None and gene_level_summary is None: 
-            raise ValueError("Either snp_level_summary or gene_level_summary must be provided!")
+        #Note: I'm starting to think that it might be alright to save the input validation for the method calls
+        #Validating files inputs
+        # if snp_level_summary is None and gene_level_summary is None: 
+        #     raise ValueError("Either snp_level_summary or gene_level_summary must be provided!")
+        # elif snp_level_summary and protein_coding_table is None: 
+        #     raise ValueError("If snp_level_summary is privided, protein_coding_table is also needed.")
 
+        #Reading files
         if snp_level_summary is not None: 
             self.snp_level_summary = _read_snp_file(snp_level_summary) #TODO: BUG here, allow for pd.DataFrame input
             
@@ -285,23 +288,27 @@ snp_level_summary and gene_level_summary are provided!")
             
         self._gene_level_summary = _read_link(gene_level_summary) 
 
-        if network is None: 
-            raise ValueError("A network must be given!")
-        elif network == 'PC_net': 
-            self.network = self._load_pcnet()
-        elif isinstance(network, nx.Graph): 
-            self.network = network
+        #Validating network inputs
+        if isinstance(network, nx.Graph) or isinstance(network, nx.DiGraph): 
+            self.network = network 
+        elif network is None and isinstance(uuid, str): 
+            print("Loading network from NDEx...") # Change to log message
+            self.network = self.get_ndex_network(uuid)
         else: 
-            raise TypeError("Network must be a networkx Graph object")
-
+            raise ValueError("Loading network failed! Make sure to provide either a networkx object in network or a valid UUID to uuid.")
+            
         self.node_names = [self.network.node[n]['name'] for n in self.network.nodes()]
 
-        self.window_size = window_size
-        self.agg_method = agg_method
-        self.chrom_col = chrom_col
-        self.bp_col = bp_col
-        self.pval_col = pval_col
+        # self.chrom_col = chrom_col
+        # self.bp_col = bp_col
+        # self.pval_col = pval_col
         self.verbose = verbose
+
+    @classmethod
+    def from_files(cls, 
+                   snp_level_summary_file=None, 
+                   gene_level_summary_file=None, 
+                   network=None, ): 
 
     @staticmethod
     def _read_table(file):
@@ -312,10 +319,10 @@ snp_level_summary and gene_level_summary are provided!")
         return min_p_table
 
     @staticmethod
-    def _load_pcnet(): 
+    def get_ndex_network(uuid): 
         anon_ndex = nc.Ndex2("http://public.ndexbio.org")
         network_niceCx = ndex2.create_nice_cx_from_server(server='public.ndexbio.org', 
-                                                          uuid='f93f402c-86d4-11e7-a10d-0ac135e8bacf')
+                                                          uuid=uuid)
 
         return network_niceCx.to_networkx()
 
@@ -323,7 +330,10 @@ snp_level_summary and gene_level_summary are provided!")
         """Wrapper for assign_snps_to_genes"""
 
         if self.protein_coding_table is None: 
-            raise ValueError("protein_coding_table attribute is missing!")
+            raise ValueError("protein_coding_table attribute must be provided!")
+
+        if self.snp_level_summary is None: 
+            raise ValueError("snp_level_summary attribute must be provided!")
         
         assign_pvalues = assign_snps_to_genes(self.snp_level_summary, 
                                               self.protein_coding_table,
@@ -419,6 +429,53 @@ snp_level_summary and gene_level_summary are provided!")
 
         return self
 
+    def diffuse(self, method="random_walk", name=None, replace=False, **kwargs): 
+        """Wrapper for the various diffusion methods available 
+
+        Parameters
+        ----------
+        method : str
+
+        name : str 
+            Column name of the result
+        replace : bool
+            If replace is True, any previous results are overwritten. If False, 
+            the current data will be added to the previous dataframe. 
+        kwargs 
+            Any additional keyword arguments for each of the diffusion function. 
+            See the individual function documentation. 
+
+        TODO
+        ----
+        * Factor out various setup and tear-down code
+        """
+        allowed = ["random_walk", "random_walk_with_kernel", "heat_diffusion"]
+        if method not in allowed: 
+            raise ValueError("method must be one of the following: %s" % allowed) 
+
+        if method == "random_walk": 
+            df = self.random_walk(**kwargs) 
+        
+        elif method == "random_walk_with_restart": 
+            df = self.random_walk_with_kernel()
+
+        elif method == "heat_diffusion": 
+            df = self.heat_diffusion()
+
+        if replace or not hasattr(self, "boosted_pvalues"): 
+            if name is None: 
+                name = 0
+            
+            df.columns = [name]
+            self.boosted_pvalues = df
+        else: 
+            if name is None: 
+                name = self.boosted_pvalues.shape[1]
+
+            self.boosted_pvalues[name] = df
+
+        return self     
+
     def random_walk(self, alpha=0.5): 
         """Runs random walk iteratively 
         
@@ -445,12 +502,14 @@ snp_level_summary and gene_level_summary are provided!")
         A = self.adjacency_matrix[:, pc_ind][pc_ind, :]
 
         out = random_walk_rst(F0, A, 0.5)
-        df = pd.DataFrame(list(zip(common_indices, np.array(out.todense()).ravel().tolist())), columns=['Genes', 'prop'])
-        df = df.set_index('Genes')
-        
-        self.boosted_pvalues = df.sort_values(by='prop', ascending=False)
-        
-        return self
+        df = pd.DataFrame(list(zip(common_indices, np.array(out.todense()).ravel().tolist())), columns=['Genes', 'PROPVALUES'])
+        df = df.set_index('Genes').sort_values(by='PROPVALUES', ascending=False)
+
+        #self.boosted_pvalues = df
+
+        #return self
+
+        return df
 
     def random_walk_with_kernel(self, threshold=5e-6, kernel=None): 
         """Runs random walk with pre-computed kernel 
@@ -489,9 +548,11 @@ snp_level_summary and gene_level_summary are provided!")
         prop_val_matrix = np.dot(heat.values.T, self.kernel)
         prop_val_table = pd.DataFrame(prop_val_matrix, index = heat.columns, columns = heat.index)
 
-        self.boosted_pvalues = prop_val_table.T.sort_values(by='Heat', ascending=False)
+        #self.boosted_pvalues = prop_val_table.T.sort_values(by='Heat', ascending=False)
 
-        return self
+        #return self
+
+        return prop_val_table
 
     def heat_diffusion(self): 
         """Runs heat diffusion without a pre-computed kernel
@@ -513,6 +574,8 @@ snp_level_summary and gene_level_summary are provided!")
         out_dict= {'prop': out_vector,'Gene':self.node_names}
         heat_df=pd.DataFrame.from_dict(out_dict).set_index('Gene')
 
-        self.boosted_pvalues = heat_df.sort_values(by='prop', ascending=False)
+        #self.boosted_pvalues = heat_df.sort_values(by='prop', ascending=False)
 
-        return self
+        #return self
+
+        return heat_df
