@@ -11,3 +11,7 @@ scz/
 .vscode/
 
 PCNet_kernel.hdf
+
+#Mac folders
+*.DS_Store
+

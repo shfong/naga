@@ -264,6 +264,7 @@ class Nbgwas(object):
     - Missing output code (to networkx subgraph, Upload to NDEx)
     - Missing utility functions (Manhanttan plots)   
     - Include logging
+    - Make `network` a property to factor out the nodes_name code
     """
     def __init__(self, 
                  snp_level_summary=None, 
@@ -293,13 +294,11 @@ class Nbgwas(object):
         #Validating network inputs
         if isinstance(network, nx.Graph) or isinstance(network, nx.DiGraph): 
             self.network = network 
-        elif network is None and isinstance(uuid, str): 
+        elif isinstance(uuid, str): 
             print("Loading network from NDEx...") # Change to log message
             self.network = self.get_ndex_network(uuid)
-        else: 
-            raise ValueError("Loading network failed! Make sure to provide either a networkx object in network or a valid UUID to uuid.")
-            
-        self.node_names = [self.network.node[n]['name'] for n in self.network.nodes()]
+        #else: 
+        #    raise ValueError("Loading network failed! Make sure to provide either a networkx object in network or a valid UUID to uuid.")
 
         # self.chrom_col = chrom_col
         # self.bp_col = bp_col
@@ -323,18 +322,32 @@ class Nbgwas(object):
         return min_p_table
 
     def read_cx_file(self, file): 
+        """Load CX file as network"""
+
         network = ndex2.create_nice_cx_from_file(file).to_networkx()
         self.network = network 
+        self.node_names = [self.network.node[n]['name'] for n in self.network.nodes()]
 
         return self
 
-    @staticmethod
-    def get_ndex_network(uuid): 
+    def read_nx_pickle_file(self, file): 
+        """Read networkx pickle file as network"""
+
+        network = nx.read_gpickle(file)
+        self.network = network
+        self.node_names = [self.network.node[n]['name'] for n in self.network.nodes()]
+
+        return self
+
+    def get_ndex_network(self, uuid): 
         anon_ndex = nc.Ndex2("http://public.ndexbio.org")
         network_niceCx = ndex2.create_nice_cx_from_server(server='public.ndexbio.org', 
                                                           uuid=uuid)
 
-        return network_niceCx.to_networkx()
+        self.network = network_niceCx.to_networkx()
+        self.node_names = [self.network.node[n]['name'] for n in self.network.nodes()]
+
+        return self
 
     def assign_pvalues(self, **kwargs): 
         """Wrapper for assign_snps_to_genes"""
@@ -511,7 +524,7 @@ class Nbgwas(object):
         F0 = heat_mat[:, heat_ind]
         A = self.adjacency_matrix[:, pc_ind][pc_ind, :]
 
-        out = random_walk_rst(F0, A, 0.5)
+        out = random_walk_rst(F0, A, alpha)
         df = pd.DataFrame(list(zip(common_indices, np.array(out.todense()).ravel().tolist())), columns=['Genes', 'PROPVALUES'])
         df = df.set_index('Genes').sort_values(by='PROPVALUES', ascending=False)
 
@@ -616,7 +629,7 @@ class Nbgwas(object):
         if values=="Heat": 
             data = self.heat.to_dict()[values]
         else: 
-            data = self.boosted_pvalues.to_dict()[0]
+            data = self.boosted_pvalues.to_dict()[values]
         name_map = dict(zip(self.node_names, list(range(len(self.node_names)))))
         new_data = {name_map[k]:v for k,v in data.items()}
 
@@ -632,10 +645,13 @@ class Nbgwas(object):
 
         return G
 
-    def view_subgraph(self, center, neighbors=1, attributes="Heat"): 
+    def view_subgraph(self, gene, neighbors=1, attributes="Heat"): 
         #nodes = set([center])
         #for i in range(neighbors): 
         #    nodes = nodes.union(set(self.network.neighbors()))
+
+        name_map = dict(zip(self.node_names, list(range(len(self.node_names)))))
+        center = name_map[gene]
 
         nodes = set([center]).union(set(self.network.neighbors(center)))
         G = self.network.subgraph(nodes)
