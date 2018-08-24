@@ -11,6 +11,8 @@ Notes
 
 from __future__ import print_function
 from collections import defaultdict, OrderedDict
+import matplotlib as mpl 
+import matplotlib.pyplot as plt
 import ndex2
 import ndex2.client as nc
 import networkx as nx
@@ -310,6 +312,8 @@ class Nbgwas(object):
                    gene_level_summary_file=None, 
                    network=None, ): 
 
+        pass
+
     @staticmethod
     def _read_table(file):
         min_p_table = pd.read_csv(file, 
@@ -317,6 +321,12 @@ class Nbgwas(object):
                                   usecols=[1,2,3,4,5,6,7,8,9])
 
         return min_p_table
+
+    def read_cx_file(self, file): 
+        network = ndex2.create_nice_cx_from_file(file).to_networkx()
+        self.network = network 
+
+        return self
 
     @staticmethod
     def get_ndex_network(uuid): 
@@ -579,3 +589,73 @@ class Nbgwas(object):
         #return self
 
         return heat_df
+
+    def annotate_network(self, values="Heat", inplace=False): 
+        """Return a subgraph with node attributes
+
+        Parameters
+        ----------
+        values : str
+            Name of the column
+        """
+
+        #TODO: Refactor
+        # if hasattr(self, "boosted_pvalues"):
+        #     if values in self.boosted_pvalues.columns: 
+        #         data = self.boosted_pvalues[values] 
+        #     else: 
+        #         data = pd.Series(self.pvalues)
+
+        # else: 
+        #     data = pd.Series(self.pvalues)
+
+        # data = dict(zip(data.index, data.values))
+
+        #values = "Heat"
+
+        if values=="Heat": 
+            data = self.heat.to_dict()[values]
+        else: 
+            data = self.boosted_pvalues.to_dict()[0]
+        name_map = dict(zip(self.node_names, list(range(len(self.node_names)))))
+        new_data = {name_map[k]:v for k,v in data.items()}
+
+        if inplace: 
+            G = self.network
+        else: 
+            G = self.network.copy() 
+
+        nx.set_node_attributes(G, values, new_data)
+
+        #if inplace: 
+        #    self.network = G
+
+        return G
+
+    def view_subgraph(self, center, neighbors=1, attributes="Heat"): 
+        #nodes = set([center])
+        #for i in range(neighbors): 
+        #    nodes = nodes.union(set(self.network.neighbors()))
+
+        nodes = set([center]).union(set(self.network.neighbors(center)))
+        G = self.network.subgraph(nodes)
+
+        attr = nx.get_node_attributes(G, attributes)
+        vals = [attr[i] for i in G.nodes()]
+
+        cmap=plt.cm.Blues
+        vmin = 0
+        vmax = 1
+
+        nx.draw(G, node_color=vals,
+                labels=nx.get_node_attributes(G, "name"), 
+                vmin=vmin, vmax=vmax, 
+                cmap=cmap)
+
+        sm = plt.cm.ScalarMappable(cmap=plt.cm.Blues,
+                                norm=mpl.colors.Normalize(vmin=vmin, vmax=vmax))
+        sm._A = []
+        plt.colorbar(sm)
+
+        return G     
+
