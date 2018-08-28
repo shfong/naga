@@ -10,7 +10,9 @@ scz/
 #Ignore text editors temporary files
 .vscode/
 
+#Large data files
 PCNet_kernel.hdf
+GIANT.cx
 
 #Mac folders
 *.DS_Store
