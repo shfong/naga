@@ -219,7 +219,7 @@ def _get_bins(df, window_size=0, cols=[1,2]):
         vals = np.argwhere((bins > i) & (bins <= j)).ravel()
         
         for v in vals: 
-            mapped_names[v] = mapped_names[v].union(names[ind])
+            mapped_names[v] = mapped_names[v].union([names[ind]])
             
     return bins, np.array(mapped_names)
 

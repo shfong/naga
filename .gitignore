@@ -4,6 +4,7 @@ build/
 __pycache__
 .ipynb_checkpoints
 .pytest_cache
+.cache
 
 #Ignore Schizophrenia data
 scz/
