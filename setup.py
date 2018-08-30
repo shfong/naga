@@ -46,5 +46,7 @@ setup(
             'seaborn', 
 	    	'ndex2', 
 	    	'tables', #For hdf5 reads
+                'coverage',
+                'pytest',
 	]
 )
