@@ -96,6 +96,13 @@ def test_assign_snps_to_genes_to_table():
     assert_equal(out['TopSNP P-Value'].values.ravel(), np.array([0.1, np.NaN, 0.3, 0.4]))
     assert_equal(out['TopSNP Position'].values.ravel(), np.array([40, np.NaN, 100, 1300]))
 
+def test_assign_snps_to_genes_to_table(): 
+    snp, pc = _setup_nonoverlapping_inputs()
+
+    snp.iloc[4, 0] = 5
+    with pytest.raises(ValueError): 
+        out = assign_snps_to_genes(snp, pc)
+
 """Tests for _get_bins()"""
     
 def test_get_bins_nonoverlapping(): 

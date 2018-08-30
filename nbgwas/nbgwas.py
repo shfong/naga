@@ -70,7 +70,8 @@ def assign_snps_to_genes(snp,
         pandas DataFrame of gene coding region. It must have the following 3 columns 
         and index
         - Chromosome: Chromosome Name (str). The chromosome name must be consistent
-            with the ones defined in snp[chrom_col]
+            with the ones defined in snp[chrom_col]. This columns is expected to be a 
+            superset of the snp chromosome column. 
         - Start (int) 
         - End (int) 
     window_size : int or float
@@ -129,10 +130,8 @@ def assign_snps_to_genes(snp,
         raise ValueError("Columns start and end from `pc` cannot be coerced into int!")
 
     #PC validation code here 
-    diff = set(pc[pc_chrom_col]).symmetric_difference(set(snp[snp_chrom_col]))
-    if diff: 
-        raise ValueError("DataFrames pc and snp have different chromosome designations!" + \
-            "Here are the differences: %s" % diff)
+    if not set(pc[pc_chrom_col]).issuperset(set(snp[snp_chrom_col])): 
+        raise ValueError("pc_chrom_col column from pc is expected to be a superset of snp_chrom_col from snp!")
 
 
     """Real Code"""
