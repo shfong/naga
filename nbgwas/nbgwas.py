@@ -24,26 +24,6 @@ from .propagation import random_walk_rst, get_common_indices
 import time
 import warnings
 
-def _read_link(link): 
-    """Checks link to be string or pandas DataFrame"""
-
-    if isinstance(link, str): 
-        return Nbgwas._read_table(link) 
-    elif isinstance(link, pd.DataFrame): 
-        return link 
-    elif link is None: 
-        return link
-    else: 
-        raise TypeError("Only strings (presumed to be file location) " + \
-                            "or pandas DataFrame is allowed!")
-
-def _read_snp_file(file): 
-    return pd.read_csv(file, header=0, index_col=None, sep='\s+')
-
-def _read_pc_file(file): 
-    return pd.read_csv(file, index_col=0, sep='\s+', 
-                        names=['Chromosome', 'Start', 'End'])
-
 def assign_snps_to_genes(snp, 
                          pc, 
                          window_size=0, 
@@ -194,6 +174,7 @@ def assign_snps_to_genes(snp,
     
     return assigned_pvals
 
+
 def _get_bins(df, window_size=0, cols=[1,2]): 
     """Convert start and end sites to bin edges 
     
@@ -223,33 +204,7 @@ def _get_bins(df, window_size=0, cols=[1,2]):
             
     return bins, np.array(mapped_names)
 
-# Load gene positions from file                                                                                            
-def load_gene_pos(gene_pos_file, delimiter='\t', header=False, cols='0,1,2,3'):
-    """Loads the gene position dataframe
     
-    DEPRECATED
-    """
-
-    # Check for valid 'cols' parameter                                                                                 
-    try:
-        cols_idx = [int(c) for c in cols.split(',')]
-    except:
-        raise ValueError('Invalid column index string')
-    # Load gene_pos_file                                                                                               
-    if header:
-        gene_positions = pd.read_csv(gene_pos_file, delimiter=delimiter)
-    else:
-        gene_positions = pd.read_csv(gene_pos_file, delimiter=delimiter, header=-1)
-    # Check gene positions table format                                                                                
-    if (gene_positions.shape[1] < 4) | (max(cols_idx) >  gene_positions.shape[1]-1):
-        raise ValueError('Not enough columns in Gene Positions File')
-
-    # Construct gene position table                                                                                    
-    gene_positions = gene_positions[cols_idx]
-    gene_positions.columns = ['Gene', 'Chr', 'Start', 'End']
-    
-    return gene_positions.set_index('Gene')
-
 def binarize(a, threshold=5e-6): 
     """Binarize array based on threshold"""
 
@@ -260,6 +215,7 @@ def binarize(a, threshold=5e-6):
     binned[a < threshold] = 1
 
     return binned
+
 
 def neg_log_val(a, floor=None): 
     """Negative log of an array
@@ -283,21 +239,33 @@ def neg_log_val(a, floor=None):
 
     return vals
 
+
+def _validate_dataframe(df, require_columns, var_name="df"): 
+    if df is None: 
+        return None
+
+    if not isinstance(df, pd.DataFrame): 
+        raise ValueError("%s must be a pandas DataFrame!" % var_name)
+    else: 
+        if not set(df.columns).issuperset(set(require_columns.values())): 
+            raise ValueError("%s must include %s" % (
+                var_name, ",".join(require_columns.keys())
+            ))
+
+
 class Nbgwas(object): 
     """Interface to Network Boosted GWAS
 
     Parameters
     ----------
-    snp_level_summary : str or pd.DataFrame
+    snp_level_summary : pd.DataFrame
         A DataFrame object that holds the snp level summary or a file that points 
         to a text file
-    gene_level_summary : str or pd.DataFrame
+    gene_level_summary : pd.DataFrame
         A DataFrame object that holds the gene level summary or a file that points 
         to a text file     
     network : networkx object
         The network to propagate the p-value over.
-    uuid : str
-        The unique identifier that corresponds to an NDEx network
     protein_coding_table : str or pd.DataFrame
         A DataFrame object that defines the start and end position and chromosome number for 
         each coding gene. This mapping will be used for the snp to gene assignment
@@ -311,68 +279,152 @@ class Nbgwas(object):
     ----
     - Standardize SNP and gene level input and protein coding region (file format)
         - Document what columns are needed for each of the dataframe
-    - Accept any UUID from NDEx for the load network
     - Factor out the numpy to pandas code after all diffusion functions
-    - Combines the heat diffusion code as one function (with a switch in behavior for kernel vs  no kernel)
     - Missing output code (to networkx subgraph, Upload to NDEx)
     - Missing utility functions (Manhanttan plots)   
     - Include logging
     - Make `network` a property to factor out the nodes_name code
     """
-    def __init__(self, 
-                 snp_level_summary=None, 
-                 gene_level_summary=None, 
-                 network = None,
-                 uuid = 'f93f402c-86d4-11e7-a10d-0ac135e8bacf', #pcnet
-                 protein_coding_table=None, 
-                 verbose=True
-                 ): 
-        
-        #Note: I'm starting to think that it might be alright to save the input validation for the method calls
-        #Validating files inputs
-        # if snp_level_summary is None and gene_level_summary is None: 
-        #     raise ValueError("Either snp_level_summary or gene_level_summary must be provided!")
-        # elif snp_level_summary and protein_coding_table is None: 
-        #     raise ValueError("If snp_level_summary is privided, protein_coding_table is also needed.")
 
-        #Reading files
-        if snp_level_summary is not None: 
-            self.snp_level_summary = _read_snp_file(snp_level_summary) #TODO: BUG here, allow for pd.DataFrame input
+    def __init__(
+        self, 
+        snp_level_summary=None, 
+        gene_level_summary=None, 
+        network = None,
+        protein_coding_table=None, 
+        snp_chrom_col='hg18chr', 
+        bp_col='bp', 
+        snp_pval_col='pval', 
+        gene_pval_col='TopSNP P-Value', 
+        gene_col='Gene', 
+        pc_chrom_col='Chrom', 
+        start_col='Start', 
+        end_col='End',
+        verbose=True
+    ): 
+
+        self.snp_chrom_col = snp_chrom_col 
+        self.bp_col = bp_col 
+        self.snp_pval_col = snp_pval_col 
             
-        if protein_coding_table is not None:
-             self.protein_coding_table = _read_pc_file(protein_coding_table) #TODO: ditto
+        self.gene_col = gene_col 
+        self.gene_pval_col = gene_pval_col 
             
-        self._gene_level_summary = _read_link(gene_level_summary) 
+        self.pc_chrom_col = pc_chrom_col
+        self.start_col = start_col 
+        self.end_col = end_col 
 
-        #Validating network inputs
-        if isinstance(network, nx.Graph) or isinstance(network, nx.DiGraph): 
-            self.network = network 
-        elif isinstance(uuid, str): 
-            print("Loading network from NDEx...") # Change to log message
-            self.network = self.get_ndex_network(uuid)
-        #else: 
-        #    raise ValueError("Loading network failed! Make sure to provide either a networkx object in network or a valid UUID to uuid.")
+        self.snp_level_summary = snp_level_summary 
+        self.gene_level_summary = gene_level_summary
+        self.protein_coding_table = protein_coding_table
+        self.network = network 
 
-        # self.chrom_col = chrom_col
-        # self.bp_col = bp_col
-        # self.pval_col = pval_col
         self.verbose = verbose
 
-    @classmethod
-    def from_files(cls, 
-                   snp_level_summary_file=None, 
-                   gene_level_summary_file=None, 
-                   network=None, ): 
+    
+    @property 
+    def snp_level_summary(self): 
+        return self._snp_level_summary 
 
-        pass
 
-    @staticmethod
-    def _read_table(file):
-        min_p_table = pd.read_csv(file, 
-                                  sep='\t',
-                                  usecols=[1,2,3,4,5,6,7,8,9])
+    @snp_level_summary.setter 
+    def snp_level_summary(self, df): 
+        _validate_dataframe(
+            df, 
+            {
+                'snp_chrom_col': self.snp_chrom_col,
+                'bp_col': self.bp_col, 
+                'snp_pval_col': self.snp_pval_col
+            }, 
+            var_name="snp_level_summary"
+        )
+        self._snp_level_summary = df
 
-        return min_p_table
+
+    @property 
+    def gene_level_summary(self): 
+        """pd.DataFrame : DataFrame that includes the gene_level_summary
+
+        If the gene_level_summary is overwritten, the DataFrame must include 
+        ['Gene', 'Top_SNP P-value'] and the previously created pvalues 
+        would be destroyed.
+        """
+
+        return self._gene_level_summary
+
+
+    @gene_level_summary.setter
+    def gene_level_summary(self, df): 
+        _validate_dataframe(
+            df, 
+            {
+                'gene_col': self.gene_col,
+                'pval_col': self.gene_pval_col
+            },
+            var_name="gene_level_summary"
+        )         
+
+        self._gene_level_summary = df
+
+        if hasattr(self, "pvalues"):
+            del self.pvalues 
+
+
+    @property 
+    def protein_coding_table(self): 
+        return self._protein_coding_table 
+
+
+    @protein_coding_table.setter 
+    def protein_coding_table(self, df): 
+        _validate_dataframe(
+            df, 
+            {
+                'pc_chrom_col': self.pc_chrom_col,
+                'start_col': self.start_col, 
+                'end_col': self.end_col
+            },
+            var_name="protein_coding_table"
+        )
+
+        self._protein_coding_table = df
+
+
+    def read_snp_table(self, file, bp_col='bp', snp_pval_col='pval', gene_col='Gene'): 
+        self.bp_col = bp_col 
+        self.snp_val_col = snp_pval_col 
+        self.gene_col = gene_col
+
+        self.snp_level_summary = pd.read_csv(
+            file, header=0, index_col=None, sep='\s+'
+        )
+
+        return self 
+
+
+    def read_gene_table(self, file, gene_col='Gene', gene_pval_col='TopSNP P-Value'): 
+        self.gene_col = gene_col 
+        self.gene_pval_col = gene_pval_col 
+
+        self.gene_level_summary = pd.read_csv(
+            file, sep='\t', usecols=[1,2,3,4,5,6,7,8,9]
+        )
+
+        return self
+
+
+    def read_protein_coding_table(self, file, pc_chrom_col="Chromosome", start_col="Start", end_col="End"): 
+        self.pc_chrom_col = pc_chrom_col 
+        self.start_col = start_col 
+        self.end_col = end_col
+
+        self.protein_coding_table = pd.read_csv(
+            file, index_col=0, sep='\s+', 
+            names=['Chromosome', 'Start', 'End']
+        )
+
+        return self    
+
 
     def read_cx_file(self, file): 
         """Load CX file as network"""
@@ -383,26 +435,30 @@ class Nbgwas(object):
 
         return self
 
+
     def read_nx_pickle_file(self, file): 
         """Read networkx pickle file as network"""
 
         network = nx.read_gpickle(file)
         self.network = network
-        self.node_names = [self.network.node[n]['name'] for n in self.network.nodes()]
 
         return self
 
-    def get_ndex_network(self, uuid): 
+
+    def get_network_from_ndex(
+        self, 
+        uuid="f93f402c-86d4-11e7-a10d-0ac135e8bacf", #PCNet
+    ): 
         anon_ndex = nc.Ndex2("http://public.ndexbio.org")
         network_niceCx = ndex2.create_nice_cx_from_server(server='public.ndexbio.org', 
                                                           uuid=uuid)
 
         self.network = network_niceCx.to_networkx()
-        self.node_names = [self.network.node[n]['name'] for n in self.network.nodes()]
 
         return self
 
-    def assign_pvalues(self, **kwargs): 
+
+    def assign_pvalues(self, window_size=0, agg_method='min'): 
         """Wrapper for assign_snps_to_genes"""
 
         if self.protein_coding_table is None: 
@@ -411,17 +467,27 @@ class Nbgwas(object):
         if self.snp_level_summary is None: 
             raise ValueError("snp_level_summary attribute must be provided!")
         
-        assign_pvalues = assign_snps_to_genes(self.snp_level_summary, 
-                                              self.protein_coding_table,
-                                              to_table=True,
-                                              **kwargs)
+        assigned_pvalues = assign_snps_to_genes(
+            self.snp_level_summary, 
+            self.protein_coding_table,
+            window_size=window_size,
+            agg_method=agg_method,
+            to_table=True,
+            snp_chrom_col=self.snp_chrom_col, 
+            bp_col=self.bp_col, 
+            pval_col=self.snp_pval_col, 
+            pc_chrom_col=self.pc_chrom_col, 
+            start_col=self.start_col, 
+            end_col=self.end_col,
+        )
 
         if self.gene_level_summary is not None: 
             warnings.warn("The existing gene_level_summary was overwritten!")
 
-        self.gene_level_summary = assign_pvalues
+        self.gene_level_summary = assigned_pvalues
 
         return self
+
 
     @property 
     def pvalues(self): 
@@ -431,47 +497,62 @@ class Nbgwas(object):
         automatically. For now, pvalues cannot be reassigned.
         """
 
-        if not hasattr(self, "_pvalues"): 
-            try: 
-                self._pvalues = self.gene_level_summary[['Gene', 'TopSNP P-Value']]
-                self._pvalues = OrderedDict(self._pvalues.set_index('Gene').to_dict()['TopSNP P-Value'])
-            except AttributeError: 
-                raise AttributeError("No gene level summary found! Please use assign_pvalues to convert SNP to gene-level summary or input a gene-level summary!")
-            except KeyError: 
-                raise KeyError("'Gene' and 'TopSNP P-value' columns were not found in gene_level_summary!")
+        if self.gene_level_summary is not None:
+            if not hasattr(self, "_pvalues"): 
+                try: 
+                    self._pvalues = self.gene_level_summary[[self.gene_col, self.gene_pval_col]]
+                    self._pvalues = OrderedDict(self._pvalues.set_index(self.gene_col).to_dict()[self.gene_pval_col])
+                except AttributeError: 
+                    raise AttributeError("No gene level summary found! Please use assign_pvalues to convert SNP to gene-level summary or input a gene-level summary!")
+        
+        else: 
+            self._pvalues = None
         
         return self._pvalues
+
 
     @pvalues.deleter
     def pvalues(self): 
         if hasattr(self, "_pvalues"):
             del self._pvalues
 
+
     @property 
-    def gene_level_summary(self): 
-        """pd.DataFrame : DataFrame that includes the gene_level_summary
+    def network(self): 
+        """networkx Graph object : Network object used for graph diffusion 
 
-        Handles error if no gene_level summary is given. If the gene_level_summary is
-        overwritten, the DataFrame must include ['Gene', 'Top_SNP P-value'] and the 
-        previously created pvalues would be destroyed.
+        node_names attribute is automatically created if the network is a 
+        networkx object. If a node has a "name" attribute, that name is used 
+        for node_names. Otherwise, the node id itself is used as the name.
         """
+        return self._network
 
-        try: 
-            return self._gene_level_summary
-        except AttributeError: 
-            raise AttributeError("No gene level summary found! Please use assign_pvalues to convert SNP to gene-level summary or input a gene-level summary!")
+
+    @network.setter 
+    def network(self, network): 
+        if network is not None and (not isinstance(network, nx.Graph) and not isinstance(network, nx.DiGraph)):
+            raise ValueError("Network must be a networks Graph of DiGraph object!")
+
+        self._network = network 
     
-    @gene_level_summary.setter
-    def gene_level_summary(self, df): 
-        if not isinstance(df, pd.DataFrame): 
-            raise ValueError("gene_level_summary must be a pandas DataFrame")
+        if network is not None: 
+            self.node_names = [
+                self._network.node[n].get('name', n) for n in self.network.nodes()
+            ]
 
-        required_headers = set(['Gene', 'TopSNP P-Value']) 
-        if len(required_headers.intersection(set(df.columns))) != len(required_headers): 
-            raise ValueError("Input dataframe must include 'Gene' and 'TopSNP P-Value' in its columns")
+        else: 
+            self.node_names = None   
 
-        self._gene_level_summary = df
-        del self.pvalues 
+
+    def cache_network_data(self): 
+        if not hasattr(self, "adjacency_matrix"): 
+            self.adjacency_matrix = nx.adjacency_matrix(self.network)
+
+        if not hasattr(self, "laplacian"): 
+            self.laplacian = csc_matrix(nx.laplacian_matrix(self.network))
+
+        return self
+
 
     def convert_to_heat(self, method='binarize', **kwargs):
         """Convert p-values to heat
@@ -502,8 +583,10 @@ class Nbgwas(object):
 
         self.heat = pd.DataFrame(heat[...,np.newaxis], index = list(self.pvalues.keys()), columns=['Heat'])
         self.heat = self.heat.reindex(self.node_names).fillna(0)
+        self.heat = self.heat.sort_values('Heat', ascending=False)
 
         return self
+
 
     def diffuse(self, method="random_walk", name=None, replace=False, **kwargs): 
         """Wrapper for the various diffusion methods available 
@@ -552,6 +635,7 @@ class Nbgwas(object):
 
         return self     
 
+
     def random_walk(self, alpha=0.5): 
         """Runs random walk iteratively 
         
@@ -586,6 +670,7 @@ class Nbgwas(object):
         #return self
 
         return df
+
 
     def random_walk_with_kernel(self, threshold=5e-6, kernel=None): 
         """Runs random walk with pre-computed kernel 
@@ -630,6 +715,7 @@ class Nbgwas(object):
 
         return prop_val_table
 
+
     def heat_diffusion(self): 
         """Runs heat diffusion without a pre-computed kernel
         
@@ -655,6 +741,7 @@ class Nbgwas(object):
         #return self
 
         return heat_df
+
 
     def annotate_network(self, values="Heat", inplace=False): 
         """Return a subgraph with node attributes
@@ -697,6 +784,7 @@ class Nbgwas(object):
         #    self.network = G
 
         return G
+
 
     def view_subgraph(self, gene, neighbors=1, attributes="Heat"): 
         #nodes = set([center])
