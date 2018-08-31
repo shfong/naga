@@ -248,7 +248,7 @@ def _validate_dataframe(df, require_columns, var_name="df"):
         raise ValueError("%s must be a pandas DataFrame!" % var_name)
     else: 
         if not set(df.columns).issuperset(set(require_columns.values())): 
-            raise ValueError("%s must include %s" % (
+            raise ValueError("%s must include %s" % ( #TODO: This needs to be better (see github issue #2)
                 var_name, ",".join(require_columns.keys())
             ))
 
@@ -283,7 +283,6 @@ class Nbgwas(object):
     - Missing output code (to networkx subgraph, Upload to NDEx)
     - Missing utility functions (Manhanttan plots)   
     - Include logging
-    - Make `network` a property to factor out the nodes_name code
     """
 
     def __init__(
@@ -390,10 +389,10 @@ class Nbgwas(object):
         self._protein_coding_table = df
 
 
-    def read_snp_table(self, file, bp_col='bp', snp_pval_col='pval', gene_col='Gene'): 
+    def read_snp_table(self, file, bp_col='bp', snp_pval_col='pval', snp_chrom_col='hg18chr'): 
         self.bp_col = bp_col 
-        self.snp_val_col = snp_pval_col 
-        self.gene_col = gene_col
+        self.snp_pval_col = snp_pval_col 
+        self.snp_chrom_col = snp_chrom_col
 
         self.snp_level_summary = pd.read_csv(
             file, header=0, index_col=None, sep='\s+'
@@ -787,9 +786,7 @@ class Nbgwas(object):
 
 
     def view_subgraph(self, gene, neighbors=1, attributes="Heat"): 
-        #nodes = set([center])
-        #for i in range(neighbors): 
-        #    nodes = nodes.union(set(self.network.neighbors()))
+        
 
         name_map = dict(zip(self.node_names, list(range(len(self.node_names)))))
         center = name_map[gene]
