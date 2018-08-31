@@ -28,3 +28,13 @@ def manhattan_plot(df):
     ax.set_xlabel('Chromosome')
     ax.set_ylabel('-Log10 p-value')
     plt.show()
+
+def get_neighbors(graph, n, center):  
+    """Get the neighbors of a networkx graph""" 
+    
+    nodes = set([center]) 
+    for i in range(n): 
+        for n in nodes: 
+            nodes = nodes.union(set(graph.neighbors(n)))
+        
+    return nodes

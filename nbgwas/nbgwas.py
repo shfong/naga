@@ -21,6 +21,7 @@ import pandas as pd
 from scipy.sparse import coo_matrix,csc_matrix
 from scipy.sparse.linalg import expm, expm_multiply
 from .propagation import random_walk_rst, get_common_indices
+from .utils import get_neighbors
 import time
 import warnings
 
@@ -280,7 +281,6 @@ class Nbgwas(object):
     - Standardize SNP and gene level input and protein coding region (file format)
         - Document what columns are needed for each of the dataframe
     - Factor out the numpy to pandas code after all diffusion functions
-    - Missing output code (to networkx subgraph, Upload to NDEx)
     - Missing utility functions (Manhanttan plots)   
     - Include logging
     """
@@ -440,6 +440,7 @@ class Nbgwas(object):
 
         network = nx.read_gpickle(file)
         self.network = network
+        self.graphs['full_network'] = network
 
         return self
 
@@ -533,11 +534,17 @@ class Nbgwas(object):
             raise ValueError("Network must be a networks Graph of DiGraph object!")
 
         self._network = network 
+
+        if not hasattr(self, "graphs"): 
+            self.graphs = {'full_network': network}
     
         if network is not None: 
             self.node_names = [
                 self._network.node[n].get('name', n) for n in self.network.nodes()
             ]
+
+            self.node_2_name = dict(zip(self.network.node.keys(), self.node_names))
+            self.name_2_node = dict(zip(self.node_names, self.network.node.keys()))
 
         else: 
             self.node_names = None   
@@ -785,31 +792,84 @@ class Nbgwas(object):
         return G
 
 
-    def view_subgraph(self, gene, neighbors=1, attributes="Heat"): 
-        
+    def get_subgraph(self, gene, neighbors=1, attributes="Heat", name="subgraph"): 
+        """Gets a subgraph center on a node
 
-        name_map = dict(zip(self.node_names, list(range(len(self.node_names)))))
-        center = name_map[gene]
+        Parameter
+        ---------
+        gene : str
+            The name of the node (not the ID) 
+        neighbors : int 
+            The number of 
+        """
 
-        nodes = set([center]).union(set(self.network.neighbors(center)))
+        center = self.name_2_node[gene]
+        nodes = get_neighbors(self.network, neighbors, center)
         G = self.network.subgraph(nodes)
 
+        self.graphs[name] = G
+
+        return self
+
+
+    def view(self, name="subgraph", attributes="Heat", vmin=0, vmax=1, cmap=plt.cm.Blues): 
+        """Plot the subgraph"""
+
+        try: 
+            G = self.graphs[name]
+        except KeyError: 
+            raise KeyError("%s is not in the self.graphs dictionary!" % name)
+
+        fig, ax = plt.subplots()
+
         attr = nx.get_node_attributes(G, attributes)
-        vals = [attr[i] for i in G.nodes()]
 
-        cmap=plt.cm.Blues
-        vmin = 0
-        vmax = 1
+        try: 
+            vals = [attr[i] for i in G.nodes()]
+        except KeyError: 
+            warnings.warn("The specified graph does not have the attribute %s. Replacing values with 0.")
+            vals = [0 for _ in G.nodes()]
 
-        nx.draw(G, node_color=vals,
-                labels=nx.get_node_attributes(G, "name"), 
-                vmin=vmin, vmax=vmax, 
-                cmap=cmap)
+        nx.draw(
+            self.graphs[name], 
+            ax=ax,
+            node_color=vals,
+            labels=nx.get_node_attributes(G, "name"), #TODO: "name" may not be in node attributes
+            vmin=vmin, 
+            vmax=vmax, 
+            cmap=cmap
+        )
 
         sm = plt.cm.ScalarMappable(cmap=plt.cm.Blues,
-                                norm=mpl.colors.Normalize(vmin=vmin, vmax=vmax))
+            norm=mpl.colors.Normalize(vmin=vmin, vmax=vmax)
+        )
+
         sm._A = []
         plt.colorbar(sm)
 
-        return G     
+        return fig, ax    
 
+
+    def to_ndex(
+        self, 
+        name="subgraph", 
+        server="http://test.ndexbio.org", 
+        username="scratch2", 
+        password="scratch2"
+    ):
+
+        try: 
+            g = ndex2.create_nice_cx_from_networkx(self.graphs[name])
+        except KeyError: 
+            raise KeyError("%s is not in self.graphs dictionary!" % name)
+
+        uuid = g.upload_to(
+            server=server,
+            username=username,
+            password=password 
+        )
+
+        warnings.warn("Upload to ndex currently fails. Not sure why..")
+
+        return uuid
+        
