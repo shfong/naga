@@ -560,7 +560,7 @@ class Nbgwas(object):
         return self
 
 
-    def convert_to_heat(self, method='binarize', **kwargs):
+    def convert_to_heat(self, method='binarize', replace=False, fill_missing=0,name='Initial Heat', **kwargs):
         """Convert p-values to heat
 
         Parameters
@@ -587,9 +587,19 @@ class Nbgwas(object):
         elif method == 'neg_log': 
             heat = neg_log_val(vals, floor=kwargs.get('floor', None))
 
-        self.heat = pd.DataFrame(heat[...,np.newaxis], index = list(self.pvalues.keys()), columns=['Heat'])
-        self.heat = self.heat.reindex(self.node_names).fillna(0)
-        self.heat = self.heat.sort_values('Heat', ascending=False)
+        heat = pd.DataFrame(
+            heat[...,np.newaxis], 
+            index = list(self.pvalues.keys()), 
+            columns=['Heat']
+        )
+        heat = heat.reindex(self.node_names).fillna(fill_missing)
+        heat = heat.sort_values('Heat', ascending=False)
+
+        if not hasattr(self, "heat"): 
+            self.heat = heat
+
+        else: 
+            self.heat.loc[:, name] = heat
 
         return self
 
