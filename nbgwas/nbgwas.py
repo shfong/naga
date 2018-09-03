@@ -253,6 +253,14 @@ def _validate_dataframe(df, require_columns, var_name="df"):
                 var_name, ",".join(require_columns.keys())
             ))
 
+def avoid_overwrite(name, iterable): 
+    if name not in iterable: 
+        return name 
+
+    else: 
+        count = sum([1 for i in iterable if i == name]) 
+        return name + " (%s)" % str(count + 1)
+
 
 class Nbgwas(object):
     """Interface to Network Boosted GWAS
@@ -560,7 +568,14 @@ class Nbgwas(object):
         return self
 
 
-    def convert_to_heat(self, method='binarize', replace=False, fill_missing=0,name='Initial Heat', **kwargs):
+    def convert_to_heat(
+        self, 
+        method='binarize', 
+        replace=False, 
+        fill_missing=0,
+        name='Initial Heat', 
+        **kwargs
+    ):
         """Convert p-values to heat
 
         Parameters
@@ -576,6 +591,8 @@ class Nbgwas(object):
         ----
         - Implement other methods to convert p-values to heat
         """
+
+        raise RuntimeError("This code is currently broken. Check out the heat table")
 
         allowed = ['binarize', "neg_log"]
         if method not in allowed:
@@ -599,12 +616,22 @@ class Nbgwas(object):
             self.heat = heat
 
         else: 
+            name = avoid_overwrite(name, self.heat.columns)
             self.heat.loc[:, name] = heat
 
         return self
 
+    """
+    def reset_cache(self, mode="results"): 
+        if mode == "results": 
+            del self.heat
 
-    def diffuse(self, method="random_walk", name=None, replace=False, **kwargs):
+        elif mode == "all": 
+            for i in ['']
+    """ 
+
+
+    def diffuse(self, method="random_walk", heat_name="Initial Heat", result_name="Diffsued Heat", **kwargs):
         """Wrapper for the various diffusion methods available
 
         Parameters
@@ -637,17 +664,8 @@ class Nbgwas(object):
         elif method == "heat_diffusion":
             df = self.heat_diffusion(**kwargs)
 
-        if replace or not hasattr(self, "boosted_pvalues"):
-            if name is None:
-                name = 0
-
-            df.columns = [name]
-            self.boosted_pvalues = df
-        else:
-            if name is None:
-                name = self.boosted_pvalues.shape[1]
-
-            self.boosted_pvalues[name] = df
+        result_name = avoid_overwrite(result_name, self.heat.columns)
+        self.heat.loc[:, result_name] = df
 
         return self
 
