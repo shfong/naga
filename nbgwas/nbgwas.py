@@ -10,7 +10,7 @@ Notes
 """
 
 from __future__ import print_function
-from collections import defaultdict, OrderedDict
+from collections import defaultdict, OrderedDict, namedtuple
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import ndex2
@@ -25,17 +25,19 @@ from .utils import get_neighbors
 import time
 import warnings
 
-def assign_snps_to_genes(snp,
-                         pc,
-                         window_size=0,
-                         to_table=False,
-                         agg_method='min',
-                         snp_chrom_col='hg18chr',
-                         bp_col='bp',
-                         pval_col='pval',
-                         pc_chrom_col='Chrom',
-                         start_col='Start',
-                         end_col='End', ):
+def assign_snps_to_genes(
+    snp,
+    pc,
+    window_size=0,
+    to_table=False,
+    agg_method='min',
+    snp_chrom_col='hg18chr',
+    bp_col='bp',
+    pval_col='pval',
+    pc_chrom_col='Chrom',
+    start_col='Start',
+    end_col='End'
+):
 
     """Assigns SNP to genes
 
@@ -242,6 +244,11 @@ def neg_log_val(a, floor=None):
 
 
 def _validate_dataframe(df, require_columns, var_name="df"):
+    """Checks to see if a dataframe has the require columns
+    
+    The dataframe is allowed to be None or a pandas DataFrame. 
+    """
+
     if df is None:
         return None
 
@@ -249,8 +256,13 @@ def _validate_dataframe(df, require_columns, var_name="df"):
         raise ValueError("%s must be a pandas DataFrame!" % var_name)
     else:
         if not set(df.columns).issuperset(set(require_columns.values())):
-            raise ValueError("%s must include %s" % ( #TODO: This needs to be better (see github issue #2)
-                var_name, ",".join(require_columns.keys())
+            missing_columns = set(require_columns.values()).difference(set(df.columns))
+            
+            raise ValueError("%s must include %s. The following columns are missing from %s: %s" % ( 
+                var_name, 
+                ",".join(require_columns.keys()), 
+                var_name,
+                ",".join(missing_columns)
             ))
 
 def avoid_overwrite(name, iterable): 
@@ -307,26 +319,34 @@ class Nbgwas(object):
         pc_chrom_col='Chrom',
         start_col='Start',
         end_col='End',
+        validate = True,
         verbose=True
     ):
 
-        self.snp_chrom_col = snp_chrom_col
-        self.bp_col = bp_col
-        self.snp_pval_col = snp_pval_col
+        self.verbose = verbose
+        self.validate = validate
 
-        self.gene_col = gene_col
-        self.gene_pval_col = gene_pval_col
+        self.snp_cols = {
+            'snp_chrom_col': snp_chrom_col, 
+            'bp_col' : bp_col, 
+            'snp_pval_col' : snp_pval_col
+        }
 
-        self.pc_chrom_col = pc_chrom_col
-        self.start_col = start_col
-        self.end_col = end_col
+        self.gene_cols = {
+            'gene_pval_col' : gene_pval_col, 
+            'gene_col' : gene_col
+        }
+
+        self.pc_cols = {
+            'pc_chrom_col' : pc_chrom_col, 
+            'start_col' : start_col, 
+            'end_col' : end_col
+        }
 
         self.snp_level_summary = snp_level_summary
         self.gene_level_summary = gene_level_summary
         self.protein_coding_table = protein_coding_table
         self.network = network
-
-        self.verbose = verbose
 
 
     @property
@@ -336,15 +356,12 @@ class Nbgwas(object):
 
     @snp_level_summary.setter
     def snp_level_summary(self, df):
-        _validate_dataframe(
-            df,
-            {
-                'snp_chrom_col': self.snp_chrom_col,
-                'bp_col': self.bp_col,
-                'snp_pval_col': self.snp_pval_col
-            },
-            var_name="snp_level_summary"
-        )
+        if self.validate: 
+            _validate_dataframe(
+                df,
+                self.snp_cols,
+                var_name="snp_level_summary"
+            )
         self._snp_level_summary = df
 
 
@@ -362,14 +379,12 @@ class Nbgwas(object):
 
     @gene_level_summary.setter
     def gene_level_summary(self, df):
-        _validate_dataframe(
-            df,
-            {
-                'gene_col': self.gene_col,
-                'pval_col': self.gene_pval_col
-            },
-            var_name="gene_level_summary"
-        )
+        if self.validate: 
+            _validate_dataframe(
+                df,
+                self.gene_cols,
+                var_name="gene_level_summary"
+            )
 
         self._gene_level_summary = df
 
@@ -384,23 +399,22 @@ class Nbgwas(object):
 
     @protein_coding_table.setter
     def protein_coding_table(self, df):
-        _validate_dataframe(
-            df,
-            {
-                'pc_chrom_col': self.pc_chrom_col,
-                'start_col': self.start_col,
-                'end_col': self.end_col
-            },
-            var_name="protein_coding_table"
-        )
+        if self.validate: 
+            _validate_dataframe(
+                df,
+                self.pc_cols,
+                var_name="protein_coding_table"
+            )
 
         self._protein_coding_table = df
 
 
     def read_snp_table(self, file, bp_col='bp', snp_pval_col='pval', snp_chrom_col='hg18chr'):
-        self.bp_col = bp_col
-        self.snp_pval_col = snp_pval_col
-        self.snp_chrom_col = snp_chrom_col
+        self.snp_cols = {
+            'snp_chrom_col': snp_chrom_col, 
+            'bp_col' : bp_col, 
+            'snp_pval_col' : snp_pval_col
+        }
 
         self.snp_level_summary = pd.read_csv(
             file, header=0, index_col=None, sep='\s+'
@@ -410,8 +424,10 @@ class Nbgwas(object):
 
 
     def read_gene_table(self, file, gene_col='Gene', gene_pval_col='TopSNP P-Value'):
-        self.gene_col = gene_col
-        self.gene_pval_col = gene_pval_col
+        self.gene_cols = {
+            'gene_pval_col' : gene_pval_col, 
+            'gene_col' : gene_col
+        }
 
         self.gene_level_summary = pd.read_csv(
             file, sep='\t', usecols=[1,2,3,4,5,6,7,8,9]
@@ -421,9 +437,11 @@ class Nbgwas(object):
 
 
     def read_protein_coding_table(self, file, pc_chrom_col="Chromosome", start_col="Start", end_col="End"):
-        self.pc_chrom_col = pc_chrom_col
-        self.start_col = start_col
-        self.end_col = end_col
+        self.pc_cols = {
+            'pc_chrom_col' : pc_chrom_col, 
+            'start_col' : start_col, 
+            'end_col' : end_col
+        }
 
         self.protein_coding_table = pd.read_csv(
             file, index_col=0, sep='\s+',
@@ -481,12 +499,12 @@ class Nbgwas(object):
             window_size=window_size,
             agg_method=agg_method,
             to_table=True,
-            snp_chrom_col=self.snp_chrom_col,
-            bp_col=self.bp_col,
-            pval_col=self.snp_pval_col,
-            pc_chrom_col=self.pc_chrom_col,
-            start_col=self.start_col,
-            end_col=self.end_col,
+            snp_chrom_col=self.snp_cols['snp_chrom_col'],
+            bp_col=self.snp_cols['bp_col'],
+            pval_col=self.snp_cols['snp_pval_col'],
+            pc_chrom_col=self.pc_cols['pc_chrom_col'],
+            start_col=self.pc_cols['start_col'],
+            end_col=self.pc_cols['end_col'],
         )
 
         if self.gene_level_summary is not None:
@@ -508,8 +526,16 @@ class Nbgwas(object):
         if self.gene_level_summary is not None:
             if not hasattr(self, "_pvalues"):
                 try:
-                    self._pvalues = self.gene_level_summary[[self.gene_col, self.gene_pval_col]]
-                    self._pvalues = OrderedDict(self._pvalues.set_index(self.gene_col).to_dict()[self.gene_pval_col])
+                    self._pvalues = self.gene_level_summary[
+                        [self.gene_cols['gene_col'], self.gene_cols['gene_pval_col']]
+                    ]
+
+                    self._pvalues = OrderedDict(
+                        self._pvalues.\
+                            set_index(self.gene_cols['gene_col']).\
+                            to_dict()[self.gene_cols['gene_pval_col']]
+                    )
+
                 except AttributeError:
                     raise AttributeError("No gene level summary found! Please use assign_pvalues to convert SNP to gene-level summary or input a gene-level summary!")
 
@@ -573,7 +599,7 @@ class Nbgwas(object):
         method='binarize', 
         replace=False, 
         fill_missing=0,
-        name='Initial Heat', 
+        name='Heat', 
         **kwargs
     ):
         """Convert p-values to heat
@@ -592,8 +618,6 @@ class Nbgwas(object):
         - Implement other methods to convert p-values to heat
         """
 
-        raise RuntimeError("This code is currently broken. Check out the heat table")
-
         allowed = ['binarize', "neg_log"]
         if method not in allowed:
             raise ValueError("Method must be in %s" % allowed)
@@ -607,10 +631,9 @@ class Nbgwas(object):
         heat = pd.DataFrame(
             heat[...,np.newaxis], 
             index = list(self.pvalues.keys()), 
-            columns=['Heat']
+            columns=[name]
         )
         heat = heat.reindex(self.node_names).fillna(fill_missing)
-        heat = heat.sort_values('Heat', ascending=False)
 
         if not hasattr(self, "heat"): 
             self.heat = heat
@@ -619,19 +642,32 @@ class Nbgwas(object):
             name = avoid_overwrite(name, self.heat.columns)
             self.heat.loc[:, name] = heat
 
+        heat = heat.sort_values(name, ascending=False)
+
         return self
 
-    """
+    
     def reset_cache(self, mode="results"): 
         if mode == "results": 
             del self.heat
 
         elif mode == "all": 
-            for i in ['']
-    """ 
+            essentials = ['verbose', 'validate', 'snp_cols', 'gene_cols', 
+                'pc_cols', '_snp_level_summary', '_gene_level_summary', 
+                '_protein_coding_table', '_network', 'node_names', 
+                'node_2_name', 'name_2_node']
+
+            keys_to_delete = []
+            for i in self.__dict__.keys(): 
+                if i not in essentials: 
+                    keys_to_delete.append(i)
+
+            for key in keys_to_delete: 
+                del self.__dict__[key]
+     
 
 
-    def diffuse(self, method="random_walk", heat_name="Initial Heat", result_name="Diffsued Heat", **kwargs):
+    def diffuse(self, method="random_walk", heat="Heat", result_name="Diffused Heat", **kwargs):
         """Wrapper for the various diffusion methods available
 
         Parameters
@@ -656,13 +692,15 @@ class Nbgwas(object):
             raise ValueError("method must be one of the following: %s" % allowed)
 
         if method == "random_walk":
-            df = self.random_walk(**kwargs)
+            df = self.random_walk(heat=heat, **kwargs)
 
         elif method == "random_walk_with_restart":
-            df = self.random_walk_with_kernel()
+            df = self.random_walk_with_kernel(heat=heat, **kwargs)
 
         elif method == "heat_diffusion":
-            df = self.heat_diffusion(**kwargs)
+            df = self.heat_diffusion(heat=heat, **kwargs)
+
+        print(df.shape)
 
         result_name = avoid_overwrite(result_name, self.heat.columns)
         self.heat.loc[:, result_name] = df
@@ -670,7 +708,7 @@ class Nbgwas(object):
         return self
 
 
-    def random_walk(self, alpha=0.5):
+    def random_walk(self, heat='Heat', alpha=0.5):
         """Runs random walk iteratively
 
         Parameters
@@ -679,7 +717,13 @@ class Nbgwas(object):
             Minimum p-value to diffuse the p-value
         alpha : float
             The restart probability
+
+        TODO
+        ----
+        * Allow for diffusing multiple heat columns
         """
+        if not isinstance(heat, list): 
+            heat = [heat]
 
         if not hasattr(self, "heat"):
             warnings.warn("Attribute heat is not found. Generating using the binarize method.")
@@ -690,12 +734,15 @@ class Nbgwas(object):
 
         nodes = [self.network.node[i]['name'] for i in self.network.nodes()]
         common_indices, pc_ind, heat_ind = get_common_indices(nodes, self.heat.index)
-        heat_mat = self.heat.values.T
+        heat_mat = self.heat[heat].values.T
+
+        print(heat_mat.shape)
 
         F0 = heat_mat[:, heat_ind]
         A = self.adjacency_matrix[:, pc_ind][pc_ind, :]
 
         out = random_walk_rst(F0, A, alpha)
+
         df = pd.DataFrame(list(zip(common_indices, np.array(out.todense()).ravel().tolist())), columns=['Genes', 'PROPVALUES'])
         df = df.set_index('Genes').sort_values(by='PROPVALUES', ascending=False)
 
@@ -706,7 +753,7 @@ class Nbgwas(object):
         return df
 
 
-    def random_walk_with_kernel(self, threshold=5e-6, kernel=None):
+    def random_walk_with_kernel(self, heat="Heat", threshold=5e-6, kernel=None):
         """Runs random walk with pre-computed kernel
 
         This propagation method relies on a pre-computed kernel.
@@ -718,6 +765,8 @@ class Nbgwas(object):
         kernel : str
             Location of the kernel (expects to be in HDF5 format)
         """
+        if not isinstance(heat, list): 
+            heat = [heat]
 
         if kernel is not None:
             self.kernel = pd.read_hdf(kernel)
@@ -737,7 +786,7 @@ class Nbgwas(object):
 
         network_genes = list(self.kernel.index)
 
-        heat = self.heat.reindex(network_genes).fillna(0) #Not saving heat to object because the kernel index may not match network's
+        heat = self.heat[heat].reindex(network_genes).fillna(0) #Not saving heat to object because the kernel index may not match network's
 
         #propagate with pre-computed kernel
         prop_val_matrix = np.dot(heat.values.T, self.kernel)
@@ -750,7 +799,7 @@ class Nbgwas(object):
         return prop_val_table
 
 
-    def heat_diffusion(self, t=0.1):
+    def heat_diffusion(self, heat="Heat", t=0.1):
         """Runs heat diffusion without a pre-computed kernel
 
         Parameters
@@ -759,6 +808,9 @@ class Nbgwas(object):
             Total time of diffusion. t controls the amount of signal is allowed to diffuse over the network.
         """
 
+        if not isinstance(heat, list): 
+            heat = [heat]
+
         if not hasattr(self, "laplacian"):
             self.laplacian = csc_matrix(nx.laplacian_matrix(self.network))
 
@@ -766,13 +818,16 @@ class Nbgwas(object):
             warnings.warn("Attribute heat is not found. Generating using the binarize method.")
             self.convert_to_heat()
 
-        out_vector=expm_multiply(-self.laplacian, self.heat.values.ravel(), start=0, stop=t, endpoint=True)[-1]
+        out_vector=expm_multiply(
+            -self.laplacian, 
+            self.heat[heat].values.ravel(), 
+            start=0, 
+            stop=t, 
+            endpoint=True
+        )[-1]
+
         out_dict= {'prop': out_vector,'Gene':self.node_names}
         heat_df=pd.DataFrame.from_dict(out_dict).set_index('Gene')
-
-        self.boosted_pvalues = heat_df.sort_values(by='prop', ascending=False)
-
-        #return self
 
         return heat_df
 
