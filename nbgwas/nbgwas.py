@@ -270,7 +270,7 @@ def avoid_overwrite(name, iterable):
         return name 
 
     else: 
-        count = sum([1 for i in iterable if i == name]) 
+        count = sum([1 for i in iterable if name in i]) 
         return name + " (%s)" % str(count + 1)
 
 
@@ -642,7 +642,7 @@ class Nbgwas(object):
             name = avoid_overwrite(name, self.heat.columns)
             self.heat.loc[:, name] = heat
 
-        heat = heat.sort_values(name, ascending=False)
+        self.heat.sort_values(name, ascending=False, inplace=True)
 
         return self
 
@@ -700,10 +700,9 @@ class Nbgwas(object):
         elif method == "heat_diffusion":
             df = self.heat_diffusion(heat=heat, **kwargs)
 
-        print(df.shape)
-
         result_name = avoid_overwrite(result_name, self.heat.columns)
         self.heat.loc[:, result_name] = df
+        self.heat.sort_values(by=result_name, ascending=False, inplace=True)
 
         return self
 
@@ -735,8 +734,6 @@ class Nbgwas(object):
         nodes = [self.network.node[i]['name'] for i in self.network.nodes()]
         common_indices, pc_ind, heat_ind = get_common_indices(nodes, self.heat.index)
         heat_mat = self.heat[heat].values.T
-
-        print(heat_mat.shape)
 
         F0 = heat_mat[:, heat_ind]
         A = self.adjacency_matrix[:, pc_ind][pc_ind, :]
@@ -832,7 +829,7 @@ class Nbgwas(object):
         return heat_df
 
 
-    def annotate_network(self, values="Heat", inplace=False):
+    def annotate_network(self, values="all"):
         """Return a subgraph with node attributes
 
         Parameters
@@ -841,41 +838,22 @@ class Nbgwas(object):
             Name of the column
         """
 
-        #TODO: Refactor
-        # if hasattr(self, "boosted_pvalues"):
-        #     if values in self.boosted_pvalues.columns:
-        #         data = self.boosted_pvalues[values]
-        #     else:
-        #         data = pd.Series(self.pvalues)
-
-        # else:
-        #     data = pd.Series(self.pvalues)
-
-        # data = dict(zip(data.index, data.values))
-
-        #values = "Heat"
-
-        if values=="Heat":
-            data = self.heat.to_dict()[values]
+        if values=="all":
+            data = self.heat.to_dict()
         else:
-            data = self.boosted_pvalues.to_dict()[values]
-        name_map = dict(zip(self.node_names, list(range(len(self.node_names)))))
-        new_data = {name_map[k]:v for k,v in data.items()}
+            data = self.heat[values].to_dict()
 
-        if inplace:
-            G = self.network
-        else:
-            G = self.network.copy()
+            if isinstance(values, str): 
+                data = {values:data}
 
-        nx.set_node_attributes(G, values, new_data)
+        for key, d in data.items(): 
+            d = {self.name_2_node[k]:v for k,v in d.items()}
+            nx.set_node_attributes(self.network, key, d)
 
-        #if inplace:
-        #    self.network = G
-
-        return G
+        return self
 
 
-    def get_subgraph(self, gene, neighbors=1, attributes="Heat", name="subgraph"): 
+    def get_subgraph(self, gene, neighbors=1, name="subgraph"): 
         """Gets a subgraph center on a node
 
         Parameter
@@ -895,7 +873,13 @@ class Nbgwas(object):
         return self
 
 
-    def view(self, name="subgraph", attributes="Heat", vmin=0, vmax=1, cmap=plt.cm.Blues): 
+    def view(self, 
+        name="subgraph", 
+        attributes="Heat", 
+        vmin=0, 
+        vmax=1, 
+        cmap=plt.cm.Blues
+    ): 
         """Plot the subgraph"""
 
         try: 
