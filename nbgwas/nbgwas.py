@@ -379,6 +379,23 @@ class Nbgwas(object):
         return self
 
 
+    def extract_network_attributes(self, pvalues=None, heat=None, genes="name"): 
+        """Build internal dataframes from network attributes"""
+
+        df = pd.DataFrame.from_dict(self.network.node, orient="index")
+
+        self.gene_cols = {"gene_col": genes, "gene_pval_col": pvalues}
+        self.gene_level_summary = df.loc[:, [genes, pvalues]]
+
+        if not isinstance(heat, list): 
+            heat = [heat]
+
+        self.heat = df.loc[:, heat]
+        self.heat.index = [self.node_2_name[i] for i in self.heat.index]
+
+        return self
+
+
     def convert_to_heat(
         self, 
         method='binarize', 
@@ -614,6 +631,11 @@ class Nbgwas(object):
 
         if values=="all":
             data = self.heat.to_dict()
+            data.update({"p-values" : dict(self.pvalues)})
+
+        elif values == "p-values": 
+            data = {"p-values" : dict(self.pvalues)}
+
         else:
             data = self.heat[values].to_dict()
 
@@ -621,7 +643,7 @@ class Nbgwas(object):
                 data = {values:data}
 
         for key, d in data.items(): 
-            d = {self.name_2_node[k]:v for k,v in d.items()}
+            d = {self.name_2_node[k]:v for k,v in d.items() if k in self.name_2_node}
             nx.set_node_attributes(self.network, key, d)
 
         return self
