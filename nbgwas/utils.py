@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
+import numpy as np
 
 def manhattan_plot(df):
-    
     # -log_10(pvalue)
     df['minuslog10pvalue'] = -np.log10(df['TopSNP P-Value'])
     df['Chr'] = df['Chr'].astype('category')
@@ -38,3 +38,37 @@ def get_neighbors(graph, n, center):
             nodes = nodes.union(set(graph.neighbors(n)))
         
     return nodes
+
+def binarize(a, threshold=5e-6):
+    """Binarize array based on threshold"""
+
+    if not isinstance(a, np.ndarray):
+        a = np.array(a)
+
+    binned = np.zeros(a.shape)
+    binned[a < threshold] = 1
+
+    return binned
+
+
+def neg_log_val(a, floor=None):
+    """Negative log of an array
+
+    Parameters
+    ----------
+    a : `numpy ndarray` or list
+        Array to be transformed
+    floor : float
+        Threshold after transformation. Below which, the
+        transformed array will be floored to 0.
+    """
+
+    if not isinstance(a, np.ndarray):
+        a = np.array(a)
+
+    vals = -np.log(a)
+
+    if floor is not None:
+        vals[vals < floor] = 0
+
+    return vals
