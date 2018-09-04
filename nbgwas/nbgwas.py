@@ -104,6 +104,7 @@ class Nbgwas(object):
         pc_chrom_col='Chrom',
         start_col='Start',
         end_col='End',
+        node_name="name",
         validate = True,
         verbose=True
     ):
@@ -127,6 +128,8 @@ class Nbgwas(object):
             'start_col' : start_col, 
             'end_col' : end_col
         }
+
+        self.node_name = node_name # The attribute contains the gene name on the network
 
         self.snp_level_summary = snp_level_summary
         self.gene_level_summary = gene_level_summary
@@ -236,18 +239,20 @@ class Nbgwas(object):
         return self
 
 
-    def read_cx_file(self, file):
+    def read_cx_file(self, file, node_name="name"):
         """Load CX file as network"""
 
+        self.node_name = node_name
         network = ndex2.create_nice_cx_from_file(file).to_networkx()
         self.network = network
-        self.node_names = [self.network.node[n]['name'] for n in self.network.nodes()]
 
         return self
 
 
-    def read_nx_pickle_file(self, file):
+    def read_nx_pickle_file(self, file, node_name="name"):
         """Read networkx pickle file as network"""
+
+        self.node_name = node_name
 
         network = nx.read_gpickle(file)
         self.network = network
@@ -259,7 +264,10 @@ class Nbgwas(object):
     def get_network_from_ndex(
         self,
         uuid="f93f402c-86d4-11e7-a10d-0ac135e8bacf", #PCNet
+        node_name="name",
     ):
+
+        self.node_name = node_name
         anon_ndex = nc.Ndex2("http://public.ndexbio.org")
         network_niceCx = ndex2.create_nice_cx_from_server(server='public.ndexbio.org',
                                                           uuid=uuid)
@@ -341,7 +349,7 @@ class Nbgwas(object):
         """networkx Graph object : Network object used for graph diffusion
 
         node_names attribute is automatically created if the network is a
-        networkx object. If a node has a "name" attribute, that name is used
+        networkx object. If a node has a `self.node_name` attribute, that name is used
         for node_names. Otherwise, the node id itself is used as the name.
         """
         return self._network
@@ -359,7 +367,7 @@ class Nbgwas(object):
     
         if network is not None: 
             self.node_names = [
-                self._network.node[n].get('name', n) for n in self.network.nodes()
+                self._network.node[n].get(self.node_name, n) for n in self.network.nodes()
             ]
 
             self.node_2_name = dict(zip(self.network.node.keys(), self.node_names))
@@ -533,8 +541,8 @@ class Nbgwas(object):
         if not hasattr(self, "adjacency_matrix"):
             self.adjacency_matrix = nx.adjacency_matrix(self.network)
 
-        nodes = [self.network.node[i]['name'] for i in self.network.nodes()]
-        common_indices, pc_ind, heat_ind = get_common_indices(nodes, self.heat.index)
+        #nodes = [self.network.node[i]['name'] for i in self.network.nodes()]
+        common_indices, pc_ind, heat_ind = get_common_indices(self.node_names, self.heat.index)
         heat_mat = self.heat[heat].values.T
 
         F0 = heat_mat[:, heat_ind]
