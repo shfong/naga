@@ -476,7 +476,6 @@ class Nbgwas(object):
                 del self.__dict__[key]
      
 
-
     def diffuse(self, method="random_walk", heat="Heat", result_name="Diffused Heat", **kwargs):
         """Wrapper for the various diffusion methods available
 
@@ -617,7 +616,7 @@ class Nbgwas(object):
 
         out_vector = heat_diffusion(
             self.laplacian, 
-            self.heat[heat].values.ravel(), 
+            self.heat.loc[self.node_names, heat].values.ravel(), 
             start=0, 
             end=t
         )
