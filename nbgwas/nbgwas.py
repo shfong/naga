@@ -2,11 +2,6 @@
 
 This package takes GWAS SNP level summary statistics and re-prioritizes
 using network data
-
-Notes
------
-    This entire package is a WIP (and untested).
-
 """
 
 from __future__ import print_function
@@ -40,17 +35,28 @@ def _validate_dataframe(df, require_columns, var_name="df"):
     if not isinstance(df, pd.DataFrame):
         raise ValueError("%s must be a pandas DataFrame!" % var_name)
     else:
-        if not set(df.columns).issuperset(set(require_columns.values())):
-            missing_columns = set(require_columns.values()).difference(set(df.columns))
+        req_col_vals = set(require_columns.values())
+        in_cols = set(df.columns)
+        if not in_cols.issuperset(req_col_vals):
+            missing_columns = req_col_vals.difference(in_cols)
             
-            raise ValueError("%s must include %s. The following columns are missing from %s: %s" % ( 
-                var_name, 
-                ",".join(require_columns.keys()), 
-                var_name,
-                ",".join(missing_columns)
-            ))
+            raise ValueError(
+                "%s must include %s. ",
+                "The following columns are missing from %s: %s" % ( 
+                    var_name, 
+                    ",".join(require_columns.keys()), 
+                    var_name,
+                    ",".join(missing_columns)
+                )
+            )
 
 def avoid_overwrite(name, iterable): 
+    """Take a list to and see if the string is in the iterable. 
+    
+    If it is, then the string is returned with the current count. Otherwise, 
+    the string itself is returned.
+    """
+
     if name not in iterable: 
         return name 
 
@@ -65,16 +71,17 @@ class Nbgwas(object):
     Parameters
     ----------
     snp_level_summary : pd.DataFrame
-        A DataFrame object that holds the snp level summary or a file that points
-        to a text file
+        A DataFrame object that holds the snp level summary or a file that 
+        points to a text file
     gene_level_summary : pd.DataFrame
-        A DataFrame object that holds the gene level summary or a file that points
-        to a text file
+        A DataFrame object that holds the gene level summary or a file that 
+        points to a text file
     network : networkx object
         The network to propagate the p-value over.
     protein_coding_table : str or pd.DataFrame
-        A DataFrame object that defines the start and end position and chromosome number for
-        each coding gene. This mapping will be used for the snp to gene assignment
+        A DataFrame object that defines the start and end position and 
+        chromosome number for each coding gene. This mapping will be used for 
+        the snp to gene assignment
 
 
     Note
@@ -83,7 +90,8 @@ class Nbgwas(object):
 
     TODO
     ----
-    - Standardize SNP and gene level input and protein coding region (file format)
+    - Standardize SNP and gene level input and protein coding region (file 
+        format)
         - Document what columns are needed for each of the dataframe
     - Factor out the numpy to pandas code after all diffusion functions
     - Missing utility functions (Manhanttan plots)   
@@ -129,7 +137,8 @@ class Nbgwas(object):
             'end_col' : end_col
         }
 
-        self.node_name = node_name # The attribute contains the gene name on the network
+        self.node_name = node_name # The attribute contains the gene name 
+                                   # on the network
 
         self.snp_level_summary = snp_level_summary
         self.gene_level_summary = gene_level_summary
@@ -197,7 +206,14 @@ class Nbgwas(object):
         self._protein_coding_table = df
 
 
-    def read_snp_table(self, file, bp_col='bp', snp_pval_col='pval', snp_chrom_col='hg18chr'):
+    def read_snp_table(
+        self, 
+        file, 
+        bp_col='bp', 
+        snp_pval_col='pval', 
+        snp_chrom_col='hg18chr'
+    ):
+
         self.snp_cols = {
             'snp_chrom_col': snp_chrom_col, 
             'bp_col' : bp_col, 
@@ -211,7 +227,13 @@ class Nbgwas(object):
         return self
 
 
-    def read_gene_table(self, file, gene_col='Gene', gene_pval_col='TopSNP P-Value'):
+    def read_gene_table(
+        self, 
+        file, 
+        gene_col='Gene', 
+        gene_pval_col='TopSNP P-Value'
+    ):
+
         self.gene_cols = {
             'gene_pval_col' : gene_pval_col, 
             'gene_col' : gene_col
@@ -224,7 +246,14 @@ class Nbgwas(object):
         return self
 
 
-    def read_protein_coding_table(self, file, pc_chrom_col="Chromosome", start_col="Start", end_col="End"):
+    def read_protein_coding_table(
+        self, 
+        file, 
+        pc_chrom_col="Chromosome", 
+        start_col="Start", 
+        end_col="End"
+    ):
+
         self.pc_cols = {
             'pc_chrom_col' : pc_chrom_col, 
             'start_col' : start_col, 
@@ -268,9 +297,12 @@ class Nbgwas(object):
     ):
 
         self.node_name = node_name
+
         anon_ndex = nc.Ndex2("http://public.ndexbio.org")
-        network_niceCx = ndex2.create_nice_cx_from_server(server='public.ndexbio.org',
-                                                          uuid=uuid)
+        network_niceCx = ndex2.create_nice_cx_from_server(
+            server='public.ndexbio.org',
+            uuid=uuid
+        )
 
         self.network = network_niceCx.to_networkx()
 
@@ -320,7 +352,8 @@ class Nbgwas(object):
             if not hasattr(self, "_pvalues"):
                 try:
                     self._pvalues = self.gene_level_summary[
-                        [self.gene_cols['gene_col'], self.gene_cols['gene_pval_col']]
+                        [self.gene_cols['gene_col'], 
+                            self.gene_cols['gene_pval_col']]
                     ]
 
                     self._pvalues = OrderedDict(
@@ -330,7 +363,11 @@ class Nbgwas(object):
                     )
 
                 except AttributeError:
-                    raise AttributeError("No gene level summary found! Please use assign_pvalues to convert SNP to gene-level summary or input a gene-level summary!")
+                    raise AttributeError(
+                        "No gene level summary found! ", 
+                        "Please use assign_pvalues to convert SNP to ",
+                        "gene-level summary or input a gene-level summary!"
+                    )
 
         else:
             self._pvalues = None
@@ -349,16 +386,20 @@ class Nbgwas(object):
         """networkx Graph object : Network object used for graph diffusion
 
         node_names attribute is automatically created if the network is a
-        networkx object. If a node has a `self.node_name` attribute, that name is used
-        for node_names. Otherwise, the node id itself is used as the name.
+        networkx object. If a node has a `self.node_name` attribute, that name 
+        is used for node_names. Otherwise, the node id itself is used as the 
+        name.
         """
+
         return self._network
 
 
     @network.setter
     def network(self, network):
-        if network is not None and (not isinstance(network, nx.Graph) and not isinstance(network, nx.DiGraph)):
-            raise ValueError("Network must be a networks Graph of DiGraph object!")
+        if network is not None and not isinstance(network, nx.Graph):
+            raise ValueError(
+                "Network must be a networks Graph of DiGraph object!"
+            )
 
         self._network = network 
 
@@ -367,11 +408,17 @@ class Nbgwas(object):
     
         if network is not None: 
             self.node_names = [
-                self._network.node[n].get(self.node_name, n) for n in self.network.nodes()
+                self._network.node[n].get(self.node_name, n) \
+                    for n in self.network.nodes()
             ]
 
-            self.node_2_name = dict(zip(self.network.node.keys(), self.node_names))
-            self.name_2_node = dict(zip(self.node_names, self.network.node.keys()))
+            self.node_2_name = dict(zip(
+                self.network.node.keys(), self.node_names
+            ))
+            
+            self.name_2_node = dict(zip(
+                self.node_names, self.network.node.keys()
+            ))
 
         else: 
             self.node_names = None   
@@ -421,7 +468,8 @@ class Nbgwas(object):
             "binarize" uses the `binarize` function while "neg_log" uses the
             `neg_log_val` function.
         kwargs
-            Any additional keyword arguments to be passed into the above functions
+            Any additional keyword arguments to be passed into the above 
+            functions
 
         TODO
         ----
@@ -458,6 +506,16 @@ class Nbgwas(object):
 
     
     def reset_cache(self, mode="results"): 
+        """Deletes the intermediate states of the object
+
+        Parameters
+        ----------
+        mode : str
+            Either "results" or "all". If `mode` is `results`, only the heat 
+            attribute will be deleted. `convert_2_heat` will need to run again.
+            If `mode` is `all`, any generated intermediates will be deleted. 
+        """
+
         if mode == "results": 
             del self.heat
 
@@ -476,13 +534,25 @@ class Nbgwas(object):
                 del self.__dict__[key]
      
 
-    def diffuse(self, method="random_walk", heat="Heat", result_name="Diffused Heat", **kwargs):
+    def diffuse(
+        self, 
+        method="random_walk", 
+        heat="Heat", 
+        result_name="Diffused Heat", 
+        **kwargs
+    ):
+
         """Wrapper for the various diffusion methods available
+
+        Calls one of the three diffusion methods and add the results to the 
+        heat attribute.
 
         Parameters
         ----------
         method : str
-
+            Must be one of the following: `random_walk`, 
+            `random_walk_with_kernel`, `heat_diffusion`. Each method calls the 
+            corresponding method. 
         name : str
             Column name of the result
         replace : bool
@@ -498,7 +568,9 @@ class Nbgwas(object):
         """
         allowed = ["random_walk", "random_walk_with_kernel", "heat_diffusion"]
         if method not in allowed:
-            raise ValueError("method must be one of the following: %s" % allowed)
+            raise ValueError(
+                "method must be one of the following: %s" % allowed
+            )
 
         if method == "random_walk":
             df = self.random_walk(heat=heat, **kwargs)
@@ -534,14 +606,21 @@ class Nbgwas(object):
             heat = [heat]
 
         if not hasattr(self, "heat"):
-            warnings.warn("Attribute heat is not found. Generating using the binarize method.")
+            warnings.warn(
+                "Attribute heat is not found. ", 
+                "Generating using the binarize method."
+            )
+
             self.convert_to_heat()
 
         if not hasattr(self, "adjacency_matrix"):
             self.adjacency_matrix = nx.adjacency_matrix(self.network)
 
-        #nodes = [self.network.node[i]['name'] for i in self.network.nodes()]
-        common_indices, pc_ind, heat_ind = get_common_indices(self.node_names, self.heat.index)
+        common_indices, pc_ind, heat_ind = get_common_indices(
+            self.node_names, 
+            self.heat.index
+        )
+
         heat_mat = self.heat[heat].values.T
 
         F0 = heat_mat[:, heat_ind]
@@ -549,7 +628,11 @@ class Nbgwas(object):
 
         out = random_walk_rst(F0, A, alpha)
 
-        df = pd.DataFrame(list(zip(common_indices, np.array(out.todense()).ravel().tolist())), columns=['Genes', 'PROPVALUES'])
+        df = pd.DataFrame(
+            list(zip(common_indices, np.array(out.todense()).ravel().tolist())),
+            columns=['Genes', 'PROPVALUES']
+        )
+
         df = df.set_index('Genes').sort_values(by='PROPVALUES', ascending=False)
 
         return df
@@ -580,16 +663,26 @@ class Nbgwas(object):
             return self
 
         if not hasattr(self, "heat"):
-            warnings.warn("Attribute heat is not found. Generating using the binarize method.")
+            warnings.warn(
+                "Attribute heat is not found. ", 
+                "Generating using the binarize method."
+            )
+
             self.convert_to_heat()
 
         network_genes = list(self.kernel.index)
 
-        heat = self.heat[heat].reindex(network_genes).fillna(0) #Not saving heat to object because the kernel index may not match network's
+        # Not saving heat to object because the kernel index may not 
+        # match network's
+        heat = self.heat[heat].reindex(network_genes).fillna(0) 
 
-        #propagate with pre-computed kernel
+        # Propagate with pre-computed kernel
         prop_val_matrix = np.dot(heat.values.T, self.kernel)
-        prop_val_table = pd.DataFrame(prop_val_matrix, index = heat.columns, columns = heat.index)
+        prop_val_table = pd.DataFrame(
+            prop_val_matrix, 
+            index = heat.columns, 
+            columns = heat.index
+        )
 
         return prop_val_table
 
@@ -611,7 +704,11 @@ class Nbgwas(object):
             self.laplacian = csc_matrix(nx.laplacian_matrix(self.network))
 
         if not hasattr(self, "heat"):
-            warnings.warn("Attribute heat is not found. Generating using the binarize method.")
+            warnings.warn(
+                "Attribute heat is not found. ", 
+                "Generating using the binarize method."
+            )
+
             self.convert_to_heat()
 
         out_vector = heat_diffusion(
@@ -650,7 +747,9 @@ class Nbgwas(object):
                 data = {values:data}
 
         for key, d in data.items(): 
-            d = {self.name_2_node[k]:v for k,v in d.items() if k in self.name_2_node}
+            d = {self.name_2_node[k]:v for k,v in d.items() \
+                if k in self.name_2_node}
+
             nx.set_node_attributes(self.network, key, d)
 
         return self
@@ -697,14 +796,17 @@ class Nbgwas(object):
         try: 
             vals = [attr[i] for i in G.nodes()]
         except KeyError: 
-            warnings.warn("The specified graph does not have the attribute %s. Replacing values with 0.")
+            warnings.warn(
+                "The specified graph does not have the attribute %s. ", 
+                "Replacing values with 0."
+            )
             vals = [0 for _ in G.nodes()]
 
         nx.draw(
             self.graphs[name], 
             ax=ax,
             node_color=vals,
-            labels=nx.get_node_attributes(G, "name"), #TODO: "name" may not be in node attributes
+            labels=nx.get_node_attributes(G, self.node_name), 
             vmin=vmin, 
             vmax=vmax, 
             cmap=cmap
@@ -738,8 +840,6 @@ class Nbgwas(object):
             username=username,
             password=password 
         )
-
-        warnings.warn("Upload to ndex currently fails. Not sure why..")
 
         return uuid
         
