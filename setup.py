@@ -48,5 +48,7 @@ setup(
             'tables', #For hdf5 reads
             'coverage',
             'pytest',
+            'sphinx' # This should make sphinx-build 
+                     # available in the virtual environment
     ]
 )

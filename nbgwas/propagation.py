@@ -9,11 +9,15 @@ from scipy.sparse import csc_matrix, csr_matrix, issparse
 from scipy.sparse.linalg import expm_multiply
 
 
-def random_walk_rst(F0, A, alpha, 
-                    normalize=True,  
-                    threshold=1e-7,
-                    max_iter=100, 
-                    verbose=True): 
+def random_walk_rst(
+    F0, 
+    A, 
+    alpha, 
+    normalize=True,  
+    threshold=1e-7,
+    max_iter=100, 
+    verbose=True
+): 
     '''Random walk with restart
     
     Performs random walk with restart on a sparse matrix. If the 
@@ -115,50 +119,50 @@ def get_common_indices(idx1, idx2):
 
 
 def sparse_normalize(m, axis=0, inplace=False): 
-	'''Normalize by one axis
-	
-	Divide row/column of a sparse matrix by the sum
-	of row/column. This implementation does not require the 
-	need to create a dense matrix and works directly at
-	the coordinates and values of the non-zero elements.
+    '''Normalize by one axis
+    
+    Divide row/column of a sparse matrix by the sum
+    of row/column. This implementation does not require the 
+    need to create a dense matrix and works directly at
+    the coordinates and values of the non-zero elements.
 
-	Parameters
-	----------
-	sp_mat : scipy.sparse
-		Sparse matrix
-	axis : int 
-		0/1 (row/column)
-		
-	Returns
-	-------
-	mat : scipy.sparse
-		row/column normalized sparse matrix
-	'''
-	if inplace: 
-		mat = m
-	else:  
-		mat = m.copy()
-	
-	#logger.debug(mat)
-	#logger.debug(type(mat))
+    Parameters
+    ----------
+    sp_mat : scipy.sparse
+        Sparse matrix
+    axis : int 
+        0/1 (row/column)
+        
+    Returns
+    -------
+    mat : scipy.sparse
+        row/column normalized sparse matrix
+    '''
+    if inplace: 
+        mat = m
+    else:  
+        mat = m.copy()
+    
+    #logger.debug(mat)
+    #logger.debug(type(mat))
 
-	row_index, col_index = mat.nonzero()
-	data = mat.data
-		
-	#logger.debug(row_index)
-	#logger.debug(col_index)
+    row_index, col_index = mat.nonzero()
+    data = mat.data
+        
+    #logger.debug(row_index)
+    #logger.debug(col_index)
 
-	marginals = np.array(mat.sum(axis=axis)).ravel()
+    marginals = np.array(mat.sum(axis=axis)).ravel()
 
-	#logger.debug(marginals)
+    #logger.debug(marginals)
 
-	data = data/marginals[row_index if axis else col_index]
-	mat.data = data
+    data = data/marginals[row_index if axis else col_index]
+    mat.data = data
 
-	if inplace: 
-		return None
-	
-	return mat
+    if inplace: 
+        return None
+    
+    return mat
 
 
 def dense_normalize(m, axis=0, inplace=False): 
@@ -185,8 +189,12 @@ def calculate_alpha(network, m=-0.02935302, b=0.74842057):
     """
     log_edge_count = np.log10(len(network.edges()))
     alpha_val = round(m*log_edge_count+b,3)
+    
     if alpha_val <=0:
+        # There should never be a case where Alpha >= 1, 
+        # as avg node degree will never be negative
+
         raise ValueError('Alpha <= 0 - Network Edge Count is too high')
-        # There should never be a case where Alpha >= 1, as avg node degree will never be negative
+
     else:
         return alpha_val

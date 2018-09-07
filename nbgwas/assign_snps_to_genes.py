@@ -27,31 +27,33 @@ def assign_snps_to_genes(
         - basepair (bp_col): the base pair number (Position)
         - p-value (pval_col): the GWAS associated p-value
     pc : pd.DataFrame
-        pandas DataFrame of gene coding region. It must have the following 3 columns
-        and index
-        - Chromosome: Chromosome Name (str). The chromosome name must be consistent
-            with the ones defined in snp[chrom_col]. This columns is expected to be a
-            superset of the snp chromosome column.
+        pandas DataFrame of gene coding region. It must have the following 3 
+        columns and index
+        - Chromosome: Chromosome Name (str). The chromosome name must be 
+            consistent with the ones defined in snp[chrom_col]. This columns is 
+            expected to be a superset of the snp chromosome column.
         - Start (int)
         - End (int)
     window_size : int or float
         Move the start site of a gene back and move the end site forward
         by a fixed `window_size` amount.
     agg_method : str or callable function
-        Method to aggregate multiple p-values associated with a SNP. If min is selected,
-        the position of the SNP that corresponds to the min p-value is also returned.
-        Otherwise, the position column is filled with NaN.
+        Method to aggregate multiple p-values associated with a SNP. If min 
+        is selected, the position of the SNP that corresponds to the min 
+        p-value is also returned. Otherwise, the position column is filled 
+        with NaN.
         - min : takes the minimum p-value
         - median : takes the median of all associated p-values
         - mean : takes the average of all assocaited p-values
         - <'callable' function> : a function that takes a list and output
-          a value. The output of this value will be used in the final dictionary.
+          a value. The output of this value will be used in the final 
+          dictionary.
     to_table : bool
-        If to_table is true, the output is a pandas dataframe that augments the pc
-        dataframe with number of SNPs, top SNP P-value, and the position of the SNP
-        for each gene. Otherwise, a dictionary of gene to top SNP P-value is returned.
-        *Note*: The current behavior for the output table is that if a coding gene is
-        duplicated, only the first row will be kept.
+        If to_table is true, the output is a pandas dataframe that augments the 
+        pc dataframe with number of SNPs, top SNP P-value, and the position of 
+        the SNP for each gene. Otherwise, a dictionary of gene to top SNP 
+        P-value is returned. *Note*: The current behavior for the output table 
+        is that if a coding gene is duplicated, only the first row will be kept.
 
     Output
     ------
@@ -62,7 +64,8 @@ def assign_snps_to_genes(
     ----
     - Change pc to something more descriptive
     - Add an option for caching bin edges
-    - Change output format to include additional information about multiple coding regions for a gene
+    - Change output format to include additional information about multiple 
+        coding regions for a gene
     """
 
     """Input validation and Type Enforcement"""
@@ -91,7 +94,10 @@ def assign_snps_to_genes(
 
     #PC validation code here
     if not set(pc[pc_chrom_col]).issuperset(set(snp[snp_chrom_col])):
-        raise ValueError("pc_chrom_col column from pc is expected to be a superset of snp_chrom_col from snp!")
+        raise ValueError(
+            "pc_chrom_col column from pc is expected to be a superset ", 
+            "of snp_chrom_col from snp!"
+        )
 
 
     """Real Code"""
@@ -142,7 +148,9 @@ def assign_snps_to_genes(
             assigned_pvals[i] = [len(j[0]), p, pos] #nSNPS, TopSNP-pvalue, TopSNP-pos
 
     if to_table:
-        assigned_df = pd.DataFrame(assigned_pvals, index=['nSNPS', 'TopSNP P-Value', 'TopSNP Position']).T
+        assigned_df = pd.DataFrame(
+            assigned_pvals, 
+            index=['nSNPS', 'TopSNP P-Value', 'TopSNP Position']).T
 
         pc =  pc[~pc.index.duplicated(keep='first')] # TODO: Change this
 
