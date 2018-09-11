@@ -348,26 +348,20 @@ class Nbgwas(object):
         automatically. For now, pvalues cannot be reassigned.
         """
 
+        gene_col = self.gene_cols['gene_col']
+        pval_col = self.gene_cols['gene_pval_col']
+
         if self.gene_level_summary is not None:
             if not hasattr(self, "_pvalues"):
-                try:
-                    self._pvalues = self.gene_level_summary[
-                        [self.gene_cols['gene_col'], 
-                            self.gene_cols['gene_pval_col']]
-                    ]
+                self._pvalues = self.gene_level_summary[
+                    [gene_col, pval_col]
+                ]
 
-                    self._pvalues = OrderedDict(
-                        self._pvalues.\
-                            set_index(self.gene_cols['gene_col']).\
-                            to_dict()[self.gene_cols['gene_pval_col']]
-                    )
-
-                except AttributeError:
-                    raise AttributeError(
-                        "No gene level summary found! ", 
-                        "Please use assign_pvalues to convert SNP to ",
-                        "gene-level summary or input a gene-level summary!"
-                    )
+                self._pvalues = self._pvalues.set_index(gene_col)
+                self._pvalues = self._pvalues.sort_values(
+                    by=pval_col, 
+                    ascending=True
+                )
 
         else:
             self._pvalues = None
@@ -480,7 +474,7 @@ class Nbgwas(object):
         if method not in allowed:
             raise ValueError("Method must be in %s" % allowed)
 
-        vals = np.array(list(self.pvalues.values()))
+        vals = self.pvalues.values.ravel()
         if method == 'binarize':
             heat = binarize(vals, threshold=kwargs.get('threshold', 5e-6))
         elif method == 'neg_log':
@@ -488,7 +482,7 @@ class Nbgwas(object):
 
         heat = pd.DataFrame(
             heat[...,np.newaxis], 
-            index = list(self.pvalues.keys()), 
+            index = self.pvalues.index, 
             columns=[name]
         )
         heat = heat.reindex(self.node_names).fillna(fill_missing)
@@ -501,6 +495,29 @@ class Nbgwas(object):
             self.heat.loc[:, name] = heat
 
         self.heat.sort_values(name, ascending=False, inplace=True)
+
+        return self
+
+
+    def get_rank(self): 
+        """Gets the ranking of each heat and pvalues"""
+
+        def convert_to_rank(series, name): 
+            series = series.sort_values(ascending=True if name == "P-values" else False)
+
+            return pd.DataFrame(
+                np.arange(1, len(series) + 1), 
+                index=series.index, 
+                columns=[name]
+            )
+
+        ranks = []
+        for col in self.heat.columns: 
+            ranks.append(convert_to_rank(self.heat[col], col))
+        
+        ranks.append(convert_to_rank(self.pvalues[self.gene_cols['gene_pval_col']], "P-values"))
+
+        self.ranks = pd.concat(ranks, axis=1)
 
         return self
 
@@ -735,10 +752,10 @@ class Nbgwas(object):
 
         if values=="all":
             data = self.heat.to_dict()
-            data.update({"p-values" : dict(self.pvalues)})
+            data.update(self.pvalues.to_dict())
 
         elif values == "p-values": 
-            data = {"p-values" : dict(self.pvalues)}
+            data = self.pvalues.to_dict()
 
         else:
             data = self.heat[values].to_dict()
