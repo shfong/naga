@@ -18,6 +18,8 @@ from scipy.sparse.linalg import expm, expm_multiply
 import time
 import warnings
 
+from py2cytoscape.data.cyrest_client import CyRestClient
+
 from .assign_snps_to_genes import assign_snps_to_genes
 from .propagation import random_walk_rst, get_common_indices, heat_diffusion
 from .utils import get_neighbors, binarize, neg_log_val
@@ -861,6 +863,18 @@ class Nbgwas(object):
         return fig, ax
 
 
+    def view_in_cytoscape(self, name="subgraph"): 
+        """Ports subgraph to Cytoscape"""
+
+        if not hasattr(self, "cyrest"): 
+            self.cyrest = CyRestClient()
+
+        hdl = self.cyrest.network.create_from_networkx(self.graphs[name])
+        self.cyrest.layout.apply(name='degree-circle', network=hdl)
+
+        return self
+
+
     def to_ndex(
         self, 
         name="subgraph", 
@@ -868,6 +882,8 @@ class Nbgwas(object):
         username="scratch2", 
         password="scratch2"
     ):
+
+        """Uploads graph to NDEx"""
 
         try: 
             g = ndex2.create_nice_cx_from_networkx(self.graphs[name])
