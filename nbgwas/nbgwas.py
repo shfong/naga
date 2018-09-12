@@ -296,7 +296,7 @@ class Nbgwas(object):
 
         self.node_name = node_name
 
-        anon_ndex = nc.Ndex2("http://public.ndexbio.org")
+        #anon_ndex = nc.Ndex2("http://public.ndexbio.org")
         network_niceCx = ndex2.create_nice_cx_from_server(
             server='public.ndexbio.org',
             uuid=uuid
@@ -606,13 +606,11 @@ class Nbgwas(object):
         return self
 
 
-    def random_walk(self, heat='Heat', alpha=0.5):
+    def random_walk(self, heat='Heat', alpha=0.5, normalize=True, axis=1):
         """Runs random walk iteratively
 
         Parameters
         ----------
-        threshold: float
-            Minimum p-value to diffuse the p-value
         alpha : float
             The restart probability
 
@@ -620,6 +618,7 @@ class Nbgwas(object):
         ----
         * Allow for diffusing multiple heat columns
         """
+        
         if not isinstance(heat, list): 
             heat = [heat]
 
@@ -644,7 +643,7 @@ class Nbgwas(object):
         F0 = heat_mat[:, heat_ind]
         A = self.adjacency_matrix[:, pc_ind][pc_ind, :]
 
-        out = random_walk_rst(F0, A, alpha)
+        out = random_walk_rst(F0, A, alpha, normalize=normalize, axis=axis)
 
         df = pd.DataFrame(
             list(zip(common_indices, np.array(out.todense()).ravel().tolist())),
@@ -656,15 +655,13 @@ class Nbgwas(object):
         return df
 
 
-    def random_walk_with_kernel(self, heat="Heat", threshold=5e-6, kernel=None):
+    def random_walk_with_kernel(self, heat="Heat", kernel=None):
         """Runs random walk with pre-computed kernel
 
         This propagation method relies on a pre-computed kernel.
 
         Parameters
         ----------
-        threshold : float
-            Minimum p-value threshold to diffuse the p-value
         kernel : str
             Location of the kernel (expects to be in HDF5 format)
         """
@@ -675,10 +672,8 @@ class Nbgwas(object):
             self.kernel = pd.read_hdf(kernel)
 
         else:
-            warnings.warn("No kernel was given! Running random_walk with alpha = 0.5 instead!")
-            self.random_walk(heat=heat)
+            raise ValueError("A kernel must be provided!")
 
-            return self
 
         if not hasattr(self, "heat"):
             warnings.warn(
