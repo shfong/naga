@@ -446,7 +446,6 @@ class Nbgwas(object):
     def convert_to_heat(
         self, 
         method='binarize', 
-        replace=False, 
         fill_missing=0,
         name='Heat', 
         **kwargs
@@ -458,10 +457,27 @@ class Nbgwas(object):
         method : str
             Must be in 'binarize' or 'neg_log'
             "binarize" uses the `binarize` function while "neg_log" uses the
-            `neg_log_val` function.
+            `neg_log_val` function. `binarize` places a heat of 1 if the 
+            p-value is < threshold otherwise 0. `neg_log` scales the p-value 
+            using the following function, $$f(x) = -log(x)$$
+        name : str 
+            The column name that will for the self.heat dataframe 
+        fill_missing : float 
+            A value to give the heat if a node is available in the network, 
+            but not in the p-values
         kwargs
             Any additional keyword arguments to be passed into the above 
             functions
+
+            For binarize: 
+            * threshold : float 
+                Default to 5*10^-6. 
+
+            For neg_log: 
+            * floor : float 
+                Default to None. If floor is provided, any converted value
+                below the floor is dropped to 0. If None, no additional 
+                transformation is done. 
 
         TODO
         ----
@@ -613,12 +629,19 @@ class Nbgwas(object):
         ----------
         alpha : float
             The restart probability
+        normalize : bool
+            If true, the adjacency matrix will be row or column normalized 
+            according to axis
+        axis : int 
+            0 row normalize, 1 col normalize. (The integers are different 
+            than convention because the axis is the axis that is summed 
+            over)
 
         TODO
         ----
         * Allow for diffusing multiple heat columns
         """
-        
+
         if not isinstance(heat, list): 
             heat = [heat]
 
@@ -668,8 +691,11 @@ class Nbgwas(object):
         if not isinstance(heat, list): 
             heat = [heat]
 
-        if kernel is not None:
+        if isinstance(kernel, str): 
             self.kernel = pd.read_hdf(kernel)
+        
+        elif isinstance(kernel, pd.DataFrame): 
+            self.kernel = kernel
 
         else:
             raise ValueError("A kernel must be provided!")
