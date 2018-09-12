@@ -14,6 +14,7 @@ def random_walk_rst(
     A, 
     alpha, 
     normalize=True,  
+    axis=1,
     threshold=1e-7,
     max_iter=100, 
     verbose=True
@@ -41,6 +42,8 @@ def random_walk_rst(
     normalize : bool
         If normalize, the adjacency matrix will be row normalized 
         (divide by the degree)
+    axis : int 
+        0 or 1. Either row or column normalize
     max_iter: int
         Maximum number of iterations to perform the random walk
     verbose : bool (Deprecated)
@@ -57,9 +60,9 @@ def random_walk_rst(
  
     if normalize: 
         if issparse(A): 
-            A = sparse_normalize(A, axis=1)
+            A = sparse_normalize(A, axis=axis)
         else: 
-            A = dense_normalize(A, axis=1)
+            A = dense_normalize(A, axis=axis)
 
     F_p = F0.copy()
     while tol > threshold: 

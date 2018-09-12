@@ -39,15 +39,13 @@ def _validate_dataframe(df, require_columns, var_name="df"):
         in_cols = set(df.columns)
         if not in_cols.issuperset(req_col_vals):
             missing_columns = req_col_vals.difference(in_cols)
-            
-            raise ValueError(
-                "%s must include %s. ",
-                "The following columns are missing from %s: %s" % ( 
-                    var_name, 
-                    ",".join(require_columns.keys()), 
-                    var_name,
-                    ",".join(missing_columns)
-                )
+
+            raise ValueError("%s must include %s. " % (
+                var_name, ",".join(require_columns.keys())
+            ), "" "The following columns are missing from %s: %s" % (
+                   var_name,
+                   ",".join(missing_columns)
+               )
             )
 
 def avoid_overwrite(name, iterable): 
@@ -592,11 +590,14 @@ class Nbgwas(object):
         if method == "random_walk":
             df = self.random_walk(heat=heat, **kwargs)
 
-        elif method == "random_walk_with_restart":
+        elif method == "random_walk_with_kernel":
             df = self.random_walk_with_kernel(heat=heat, **kwargs)
 
         elif method == "heat_diffusion":
             df = self.heat_diffusion(heat=heat, **kwargs)
+
+        else: 
+            raise RuntimeError("Unexpected method name!")
 
         result_name = avoid_overwrite(result_name, self.heat.columns)
         self.heat.loc[:, result_name] = df
@@ -674,8 +675,8 @@ class Nbgwas(object):
             self.kernel = pd.read_hdf(kernel)
 
         else:
-            warnings.warn("No kernel was given! Running random_walk instead")
-            self.random_walk()
+            warnings.warn("No kernel was given! Running random_walk with alpha = 0.5 instead!")
+            self.random_walk(heat=heat)
 
             return self
 
@@ -699,7 +700,7 @@ class Nbgwas(object):
             prop_val_matrix, 
             index = heat.columns, 
             columns = heat.index
-        )
+        ).T
 
         return prop_val_table
 
@@ -860,3 +861,12 @@ class Nbgwas(object):
 
         return uuid
         
+
+    def hypergeom(self, gold, top=100, ngenes=20000, rank_col=None): 
+        """Run hypergemoetric test"""
+
+        if rank_col is None: 
+            genes = self.pvalues.sort_values(by=self.gene_cols['gene_pval_col'])
+            genes = genes.iloc[:top].index
+
+        raise NotImplementedError
