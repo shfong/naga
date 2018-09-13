@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 from scipy.sparse import coo_matrix,csc_matrix
 from scipy.sparse.linalg import expm, expm_multiply
+from scipy.stats import hypergeom
 import time
 import warnings
 
@@ -823,7 +824,23 @@ class Nbgwas(object):
         vmax=1, 
         cmap=plt.cm.Blues
     ): 
-        """Plot the subgraph"""
+        """Plot the subgraph
+        
+        Parameters
+        ----------
+        name : str
+            The key in self.graphs that contains the graph 
+        attributes : str
+            The node attributes on the network (in self.graphs) to be
+            visualized. Note that this means, `annotate_network` should 
+            be used first to add the node attributes
+        vmin : float
+            The lower end of the colorbar
+        vmax : float
+            The upper end of the colorbar
+        cmap : 
+            Matplotlib colormap object        
+        """
 
         try: 
             G = self.graphs[name]
@@ -883,7 +900,19 @@ class Nbgwas(object):
         password="scratch2"
     ):
 
-        """Uploads graph to NDEx"""
+        """Uploads graph to NDEx
+        
+        Parameters
+        ----------
+        name : str
+            The key in self.graphs that contains the graph 
+        server: str
+            The NDEx server hyperlink
+        username : str
+            Username of the NDEx account
+        password : str
+            Password of the NDEx account
+        """
 
         try: 
             g = ndex2.create_nice_cx_from_networkx(self.graphs[name])
@@ -900,10 +929,63 @@ class Nbgwas(object):
         
 
     def hypergeom(self, gold, top=100, ngenes=20000, rank_col=None): 
-        """Run hypergemoetric test"""
+        """Run hypergemoetric test
+
+        Parameters
+        ----------
+        gold : list
+            An iterable of genes
+        top : int 
+            The number of ranked genes to select. 
+        ngenes : int 
+            The number of genes to be considered as the global background.
+        rank_col : str
+            The name of the heat column to be determined for significance. 
+            If the rank_col is None, the p-value is used.      
+        """
 
         if rank_col is None: 
             genes = self.pvalues.sort_values(by=self.gene_cols['gene_pval_col'])
             genes = genes.iloc[:top].index
 
-        raise NotImplementedError
+        else: 
+            genes = self.heat.sort_values(by=rank_col, ascending=False)
+            genes = genes.iloc[:top].index
+
+        intersect = set(genes).intersection(set(gold))
+        score = len(intersect)
+        M, n, N = ngenes, len(gold), top
+
+        pvalue = 1 - hypergeom.cdf(score, M, n, N)
+        Hypergeom = namedtuple('Hypergeom', 
+            ['pvalue', 'n_intersect', 'common_items']
+        )
+
+        return Hypergeom(pvalue, score, intersect)
+
+    def check_significance(self, gold, top=100, threshold=0.05, rank_col=None): 
+        """Check if the top N genes are significant
+        
+        Parameters
+        ----------
+        gold : dict 
+            A gene to p-value dictionary. If a gene cannot be found in the 
+            dictionary, the default value is 1. 
+        top : int 
+            The number of ranked genes to select. 
+        threshold : float 
+            The p-value threshold to determine significance
+        rank_col : str
+            The name of the heat column to be determined for significance. 
+            If the rank_col is None, the p-value is used.        
+        """
+
+        if rank_col is None: 
+            genes = self.pvalues.sort_values(by=self.gene_cols['gene_pval_col'])
+            genes = genes.iloc[:top].index
+
+        else: 
+            genes = self.heat.sort_values(by=rank_col, ascending=False)
+            genes = genes.iloc[:top].index
+
+        return sum([gold.get(i, 1) < threshold for i in genes])
