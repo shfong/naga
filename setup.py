@@ -46,6 +46,8 @@ setup(
             'seaborn', 
             'ndex2', 
             'tables', #For hdf5 reads
+            'python-igraph', 
+            'py2cytoscape', 
             'coverage',
             'pytest',
             'sphinx' # This should make sphinx-build 

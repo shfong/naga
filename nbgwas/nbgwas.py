@@ -15,8 +15,11 @@ import numpy as np
 import pandas as pd
 from scipy.sparse import coo_matrix,csc_matrix
 from scipy.sparse.linalg import expm, expm_multiply
+from scipy.stats import hypergeom
 import time
 import warnings
+
+from py2cytoscape.data.cyrest_client import CyRestClient
 
 from .assign_snps_to_genes import assign_snps_to_genes
 from .propagation import random_walk_rst, get_common_indices, heat_diffusion
@@ -39,15 +42,13 @@ def _validate_dataframe(df, require_columns, var_name="df"):
         in_cols = set(df.columns)
         if not in_cols.issuperset(req_col_vals):
             missing_columns = req_col_vals.difference(in_cols)
-            
-            raise ValueError(
-                "%s must include %s. ",
-                "The following columns are missing from %s: %s" % ( 
-                    var_name, 
-                    ",".join(require_columns.keys()), 
-                    var_name,
-                    ",".join(missing_columns)
-                )
+
+            raise ValueError("%s must include %s. " % (
+                var_name, ",".join(require_columns.keys())
+            ), "" "The following columns are missing from %s: %s" % (
+                   var_name,
+                   ",".join(missing_columns)
+               )
             )
 
 def avoid_overwrite(name, iterable): 
@@ -298,7 +299,7 @@ class Nbgwas(object):
 
         self.node_name = node_name
 
-        anon_ndex = nc.Ndex2("http://public.ndexbio.org")
+        #anon_ndex = nc.Ndex2("http://public.ndexbio.org")
         network_niceCx = ndex2.create_nice_cx_from_server(
             server='public.ndexbio.org',
             uuid=uuid
@@ -348,26 +349,20 @@ class Nbgwas(object):
         automatically. For now, pvalues cannot be reassigned.
         """
 
+        gene_col = self.gene_cols['gene_col']
+        pval_col = self.gene_cols['gene_pval_col']
+
         if self.gene_level_summary is not None:
             if not hasattr(self, "_pvalues"):
-                try:
-                    self._pvalues = self.gene_level_summary[
-                        [self.gene_cols['gene_col'], 
-                            self.gene_cols['gene_pval_col']]
-                    ]
+                self._pvalues = self.gene_level_summary[
+                    [gene_col, pval_col]
+                ]
 
-                    self._pvalues = OrderedDict(
-                        self._pvalues.\
-                            set_index(self.gene_cols['gene_col']).\
-                            to_dict()[self.gene_cols['gene_pval_col']]
-                    )
-
-                except AttributeError:
-                    raise AttributeError(
-                        "No gene level summary found! ", 
-                        "Please use assign_pvalues to convert SNP to ",
-                        "gene-level summary or input a gene-level summary!"
-                    )
+                self._pvalues = self._pvalues.set_index(gene_col)
+                self._pvalues = self._pvalues.sort_values(
+                    by=pval_col, 
+                    ascending=True
+                )
 
         else:
             self._pvalues = None
@@ -454,7 +449,6 @@ class Nbgwas(object):
     def convert_to_heat(
         self, 
         method='binarize', 
-        replace=False, 
         fill_missing=0,
         name='Heat', 
         **kwargs
@@ -466,10 +460,27 @@ class Nbgwas(object):
         method : str
             Must be in 'binarize' or 'neg_log'
             "binarize" uses the `binarize` function while "neg_log" uses the
-            `neg_log_val` function.
+            `neg_log_val` function. `binarize` places a heat of 1 if the 
+            p-value is < threshold otherwise 0. `neg_log` scales the p-value 
+            using the following function, $$f(x) = -log(x)$$
+        name : str 
+            The column name that will for the self.heat dataframe 
+        fill_missing : float 
+            A value to give the heat if a node is available in the network, 
+            but not in the p-values
         kwargs
             Any additional keyword arguments to be passed into the above 
             functions
+
+            For binarize: 
+            * threshold : float 
+                Default to 5*10^-6. 
+
+            For neg_log: 
+            * floor : float 
+                Default to None. If floor is provided, any converted value
+                below the floor is dropped to 0. If None, no additional 
+                transformation is done. 
 
         TODO
         ----
@@ -480,7 +491,7 @@ class Nbgwas(object):
         if method not in allowed:
             raise ValueError("Method must be in %s" % allowed)
 
-        vals = np.array(list(self.pvalues.values()))
+        vals = self.pvalues.values.ravel()
         if method == 'binarize':
             heat = binarize(vals, threshold=kwargs.get('threshold', 5e-6))
         elif method == 'neg_log':
@@ -488,7 +499,7 @@ class Nbgwas(object):
 
         heat = pd.DataFrame(
             heat[...,np.newaxis], 
-            index = list(self.pvalues.keys()), 
+            index = self.pvalues.index, 
             columns=[name]
         )
         heat = heat.reindex(self.node_names).fillna(fill_missing)
@@ -501,6 +512,29 @@ class Nbgwas(object):
             self.heat.loc[:, name] = heat
 
         self.heat.sort_values(name, ascending=False, inplace=True)
+
+        return self
+
+
+    def get_rank(self): 
+        """Gets the ranking of each heat and pvalues"""
+
+        def convert_to_rank(series, name): 
+            series = series.sort_values(ascending=True if name == "P-values" else False)
+
+            return pd.DataFrame(
+                np.arange(1, len(series) + 1), 
+                index=series.index, 
+                columns=[name]
+            )
+
+        ranks = []
+        for col in self.heat.columns: 
+            ranks.append(convert_to_rank(self.heat[col], col))
+        
+        ranks.append(convert_to_rank(self.pvalues[self.gene_cols['gene_pval_col']], "P-values"))
+
+        self.ranks = pd.concat(ranks, axis=1)
 
         return self
 
@@ -575,11 +609,14 @@ class Nbgwas(object):
         if method == "random_walk":
             df = self.random_walk(heat=heat, **kwargs)
 
-        elif method == "random_walk_with_restart":
+        elif method == "random_walk_with_kernel":
             df = self.random_walk_with_kernel(heat=heat, **kwargs)
 
         elif method == "heat_diffusion":
             df = self.heat_diffusion(heat=heat, **kwargs)
+
+        else: 
+            raise RuntimeError("Unexpected method name!")
 
         result_name = avoid_overwrite(result_name, self.heat.columns)
         self.heat.loc[:, result_name] = df
@@ -588,20 +625,26 @@ class Nbgwas(object):
         return self
 
 
-    def random_walk(self, heat='Heat', alpha=0.5):
+    def random_walk(self, heat='Heat', alpha=0.5, normalize=True, axis=1):
         """Runs random walk iteratively
 
         Parameters
         ----------
-        threshold: float
-            Minimum p-value to diffuse the p-value
         alpha : float
             The restart probability
+        normalize : bool
+            If true, the adjacency matrix will be row or column normalized 
+            according to axis
+        axis : int 
+            0 row normalize, 1 col normalize. (The integers are different 
+            than convention because the axis is the axis that is summed 
+            over)
 
         TODO
         ----
         * Allow for diffusing multiple heat columns
         """
+
         if not isinstance(heat, list): 
             heat = [heat]
 
@@ -626,7 +669,7 @@ class Nbgwas(object):
         F0 = heat_mat[:, heat_ind]
         A = self.adjacency_matrix[:, pc_ind][pc_ind, :]
 
-        out = random_walk_rst(F0, A, alpha)
+        out = random_walk_rst(F0, A, alpha, normalize=normalize, axis=axis)
 
         df = pd.DataFrame(
             list(zip(common_indices, np.array(out.todense()).ravel().tolist())),
@@ -638,29 +681,28 @@ class Nbgwas(object):
         return df
 
 
-    def random_walk_with_kernel(self, heat="Heat", threshold=5e-6, kernel=None):
+    def random_walk_with_kernel(self, heat="Heat", kernel=None):
         """Runs random walk with pre-computed kernel
 
         This propagation method relies on a pre-computed kernel.
 
         Parameters
         ----------
-        threshold : float
-            Minimum p-value threshold to diffuse the p-value
         kernel : str
             Location of the kernel (expects to be in HDF5 format)
         """
         if not isinstance(heat, list): 
             heat = [heat]
 
-        if kernel is not None:
+        if isinstance(kernel, str): 
             self.kernel = pd.read_hdf(kernel)
+        
+        elif isinstance(kernel, pd.DataFrame): 
+            self.kernel = kernel
 
         else:
-            warnings.warn("No kernel was given! Running random_walk instead")
-            self.random_walk()
+            raise ValueError("A kernel must be provided!")
 
-            return self
 
         if not hasattr(self, "heat"):
             warnings.warn(
@@ -682,7 +724,7 @@ class Nbgwas(object):
             prop_val_matrix, 
             index = heat.columns, 
             columns = heat.index
-        )
+        ).T
 
         return prop_val_table
 
@@ -735,10 +777,10 @@ class Nbgwas(object):
 
         if values=="all":
             data = self.heat.to_dict()
-            data.update({"p-values" : dict(self.pvalues)})
+            data.update(self.pvalues.to_dict())
 
         elif values == "p-values": 
-            data = {"p-values" : dict(self.pvalues)}
+            data = self.pvalues.to_dict()
 
         else:
             data = self.heat[values].to_dict()
@@ -782,7 +824,23 @@ class Nbgwas(object):
         vmax=1, 
         cmap=plt.cm.Blues
     ): 
-        """Plot the subgraph"""
+        """Plot the subgraph
+        
+        Parameters
+        ----------
+        name : str
+            The key in self.graphs that contains the graph 
+        attributes : str
+            The node attributes on the network (in self.graphs) to be
+            visualized. Note that this means, `annotate_network` should 
+            be used first to add the node attributes
+        vmin : float
+            The lower end of the colorbar
+        vmax : float
+            The upper end of the colorbar
+        cmap : 
+            Matplotlib colormap object        
+        """
 
         try: 
             G = self.graphs[name]
@@ -822,6 +880,18 @@ class Nbgwas(object):
         return fig, ax
 
 
+    def view_in_cytoscape(self, name="subgraph"): 
+        """Ports subgraph to Cytoscape"""
+
+        if not hasattr(self, "cyrest"): 
+            self.cyrest = CyRestClient()
+
+        hdl = self.cyrest.network.create_from_networkx(self.graphs[name])
+        self.cyrest.layout.apply(name='degree-circle', network=hdl)
+
+        return self
+
+
     def to_ndex(
         self, 
         name="subgraph", 
@@ -829,6 +899,20 @@ class Nbgwas(object):
         username="scratch2", 
         password="scratch2"
     ):
+
+        """Uploads graph to NDEx
+        
+        Parameters
+        ----------
+        name : str
+            The key in self.graphs that contains the graph 
+        server: str
+            The NDEx server hyperlink
+        username : str
+            Username of the NDEx account
+        password : str
+            Password of the NDEx account
+        """
 
         try: 
             g = ndex2.create_nice_cx_from_networkx(self.graphs[name])
@@ -843,3 +927,65 @@ class Nbgwas(object):
 
         return uuid
         
+
+    def hypergeom(self, gold, top=100, ngenes=20000, rank_col=None): 
+        """Run hypergemoetric test
+
+        Parameters
+        ----------
+        gold : list
+            An iterable of genes
+        top : int 
+            The number of ranked genes to select. 
+        ngenes : int 
+            The number of genes to be considered as the global background.
+        rank_col : str
+            The name of the heat column to be determined for significance. 
+            If the rank_col is None, the p-value is used.      
+        """
+
+        if rank_col is None: 
+            genes = self.pvalues.sort_values(by=self.gene_cols['gene_pval_col'])
+            genes = genes.iloc[:top].index
+
+        else: 
+            genes = self.heat.sort_values(by=rank_col, ascending=False)
+            genes = genes.iloc[:top].index
+
+        intersect = set(genes).intersection(set(gold))
+        score = len(intersect)
+        M, n, N = ngenes, len(gold), top
+
+        pvalue = 1 - hypergeom.cdf(score, M, n, N)
+        Hypergeom = namedtuple('Hypergeom', 
+            ['pvalue', 'n_intersect', 'common_items']
+        )
+
+        return Hypergeom(pvalue, score, intersect)
+
+    def check_significance(self, gold, top=100, threshold=0.05, rank_col=None): 
+        """Check if the top N genes are significant
+        
+        Parameters
+        ----------
+        gold : dict 
+            A gene to p-value dictionary. If a gene cannot be found in the 
+            dictionary, the default value is 1. 
+        top : int 
+            The number of ranked genes to select. 
+        threshold : float 
+            The p-value threshold to determine significance
+        rank_col : str
+            The name of the heat column to be determined for significance. 
+            If the rank_col is None, the p-value is used.        
+        """
+
+        if rank_col is None: 
+            genes = self.pvalues.sort_values(by=self.gene_cols['gene_pval_col'])
+            genes = genes.iloc[:top].index
+
+        else: 
+            genes = self.heat.sort_values(by=rank_col, ascending=False)
+            genes = genes.iloc[:top].index
+
+        return sum([gold.get(i, 1) < threshold for i in genes])
