@@ -1,11 +1,10 @@
 import nbgwas
 from nbgwas import Nbgwas
-
 from flask import Flask, request
 from flask_restful import reqparse, abort, Api, Resource
-
 import pandas as pd
 import networkx as nx
+import logging
 
 from call_biggim import get_table_from_biggim
 
@@ -25,14 +24,14 @@ class nbgwasapp(Resource):
 
     def post(self): 
 
-        print("Begin!")
+        logging.info("Begin!")
 
+        #Setting alpha
         alpha = float(request.values.get("alpha", 0.5))
-
-        print(request.files)
         
+        #Getting network
         if "network" in request.files: 
-            print("Reading file")
+            logging.info("Reading Network File")
             
             network_file = request.files['network']
             network_df = pd.read_csv(
@@ -41,40 +40,42 @@ class nbgwasapp(Resource):
                 names=['Gene1', 'Gene2', 'Val']
             )
         elif "column" in request.values: 
-            print("Getting file from BigGIM")
+            logging.info("Getting file from BigGIM")
             network_df = get_table_from_biggim(request.values['column'], 0.8)
             network_df = network_df.astype(str)
         
+        elif "ndex" in request.values: 
+            ndex_uuid = request.values['ndex']
+
         else: 
             return "failed"
         
-        print("Finished getting network_df")
+        logging.info("Finished getting network_df")
         
+        #Making networkx object
         dG = nx.from_pandas_dataframe(network_df, 'Gene1', 'Gene2')
 
-        print("Finished making network")
+        logging.info("Finished making network")
 
+        #Parsing seeds
         seeds = request.values['seeds']
         seeds = seeds.split(',')
 
-        print("Finished converting seeds")
+        logging.info("Finished converting seeds")
         
+        #Making sure the seeds are in the network
         for i in seeds: 
             if i not in dG.nodes(): 
                 seeds.remove(i) 
-                print(f"{i} not in nodes")
-                
-                #return "failed"
+                logging.info(f"{i} not in nodes")
             
         if len(seeds) == 0:
-            print("No seeds left!")
+            logging.info("No seeds left!")
             return "failed"
 
         gene_level_summary = create_gene_level_summary(dG.nodes(), seeds)
 
-        print(gene_level_summary.head())
-
-        print("Finished gene level Summary")
+        logging.info("Finished gene level Summary")
 
         g = Nbgwas(
             gene_level_summary=gene_level_summary,
@@ -84,14 +85,9 @@ class nbgwasapp(Resource):
         )
 
         g.convert_to_heat()
-
-        print(g.heat.head())
-
         g.diffuse(method='random_walk', alpha=alpha)
 
-        print("Done!")
-
-        print(g.heat.head())
+        logging.info("Done!")
 
         return g.heat.iloc[:, -1].to_json() + '\n'
 
