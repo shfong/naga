@@ -606,7 +606,7 @@ class Nbgwas(object):
                 "method must be one of the following: %s" % allowed
             )
 
-        if self.networks is None: 
+        if self.network is None: 
             raise RuntimeError("Network was given!")
 
         if method == "random_walk":
