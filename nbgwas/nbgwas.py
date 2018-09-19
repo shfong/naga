@@ -534,7 +534,7 @@ class Nbgwas(object):
         
         ranks.append(convert_to_rank(self.pvalues[self.gene_cols['gene_pval_col']], "P-values"))
 
-        self.ranks = pd.concat(ranks, axis=1)
+        self.ranks = pd.concat(ranks, axis=1, sort=False)
 
         return self
 
@@ -605,6 +605,9 @@ class Nbgwas(object):
             raise ValueError(
                 "method must be one of the following: %s" % allowed
             )
+
+        if self.networks is None: 
+            raise RuntimeError("Network was given!")
 
         if method == "random_walk":
             df = self.random_walk(heat=heat, **kwargs)
