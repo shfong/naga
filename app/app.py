@@ -7,6 +7,8 @@ from flask_restful import reqparse, abort, Api, Resource
 import pandas as pd
 import networkx as nx
 
+from call_biggim import get_table_from_biggim
+
 app = Flask(__name__)
 api = Api(app)
 
@@ -27,12 +29,27 @@ class nbgwasapp(Resource):
 
         alpha = float(request.values.get("alpha", 0.5))
 
-        network_file = request.files['network']
-        network_df = pd.read_csv(
-            network_file.stream, 
-            sep='\t', 
-            names=['Gene1', 'Gene2', 'Val']
-        )
+        print(request.files)
+        
+        if "network" in request.files: 
+            print("Reading file")
+            
+            network_file = request.files['network']
+            network_df = pd.read_csv(
+                network_file.stream, 
+                sep='\t', 
+                names=['Gene1', 'Gene2', 'Val']
+            )
+        elif "column" in request.values: 
+            print("Getting file from BigGIM")
+            network_df = get_table_from_biggim(request.values['column'], 0.8)
+            network_df = network_df.astype(str)
+        
+        else: 
+            return "failed"
+        
+        print("Finished getting network_df")
+        
         dG = nx.from_pandas_dataframe(network_df, 'Gene1', 'Gene2')
 
         print("Finished making network")
@@ -41,8 +58,16 @@ class nbgwasapp(Resource):
         seeds = seeds.split(',')
 
         print("Finished converting seeds")
-
-        if not set(dG.nodes()).issuperset(seeds): 
+        
+        for i in seeds: 
+            if i not in dG.nodes(): 
+                seeds.remove(i) 
+                print(f"{i} not in nodes")
+                
+                #return "failed"
+            
+        if len(seeds) == 0:
+            print("No seeds left!")
             return "failed"
 
         gene_level_summary = create_gene_level_summary(dG.nodes(), seeds)
