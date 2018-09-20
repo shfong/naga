@@ -1,10 +1,11 @@
 import nbgwas
 from nbgwas import Nbgwas
-from flask import Flask, request
+from flask import Flask, request, jsonify
 from flask_restful import reqparse, abort, Api, Resource
 import pandas as pd
 import networkx as nx
 import logging
+import json
 
 from call_biggim import get_table_from_biggim
 
@@ -88,8 +89,8 @@ class nbgwasapp(Resource):
         g.diffuse(method='random_walk', alpha=alpha)
 
         logging.info("Done!")
-
-        return g.heat.iloc[:, -1].to_json() + '\n'
+        return_json = json.loads(g.heat.iloc[:, -1].to_json())
+        return return_json #+ '\n'
 
         
 
@@ -98,4 +99,4 @@ api.add_resource(nbgwasapp, '/nbgwas', endpoint='nbgwas')
 #api.add_resource(job, '/nbgwas/<jobid>')
 
 if __name__ == '__main__':
-    app.run(debug=True) #Change this in production
+    app.run(debug=True, host= '0.0.0.0') #Change this in production
