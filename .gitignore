@@ -20,3 +20,5 @@ GIANT.cx
 *.DS_Store
 
 instance/
+
+*.log
