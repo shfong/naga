@@ -6,11 +6,14 @@ import pandas as pd
 import networkx as nx
 import logging
 import json
+from ndex2 import create_nice_cx_from_server
 
 from call_biggim import get_table_from_biggim
 
 app = Flask(__name__)
 api = Api(app)
+
+logging.basicConfig(filename='app.log',level=logging.INFO)
 
 def create_gene_level_summary(genes, seeds): 
     # Add heat to gene_level_summary
@@ -30,6 +33,8 @@ class nbgwasapp(Resource):
         #Setting alpha
         alpha = float(request.values.get("alpha", 0.5))
         
+        dG = None
+
         #Getting network
         if "network" in request.files: 
             logging.info("Reading Network File")
@@ -46,15 +51,25 @@ class nbgwasapp(Resource):
             network_df = network_df.astype(str)
         
         elif "ndex" in request.values: 
+            logging.info("Getting network from NDEx")
             ndex_uuid = request.values['ndex']
+            network_niceCx = create_nice_cx_from_server(
+                server='public.ndexbio.org',
+                uuid=ndex_uuid
+            )
+            dG = network_niceCx.to_networkx()
+            node_name_mapping = {i: j['name'] for i,j in dG.node.items()}            
+
+            dG = nx.relabel_nodes(dG, node_name_mapping)
 
         else: 
-            return "failed"
+            return "Query fields are not understood!"
         
         logging.info("Finished getting network_df")
         
         #Making networkx object
-        dG = nx.from_pandas_dataframe(network_df, 'Gene1', 'Gene2')
+        if dG is None: 
+            dG = nx.from_pandas_dataframe(network_df, 'Gene1', 'Gene2')
 
         logging.info("Finished making network")
 
