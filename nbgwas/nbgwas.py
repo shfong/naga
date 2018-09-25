@@ -451,6 +451,7 @@ class Nbgwas(object):
         method='binarize',
         fill_missing=0,
         name='Heat',
+        normalize=None,
         **kwargs
     ):
         """Convert p-values to heat
@@ -468,6 +469,9 @@ class Nbgwas(object):
         fill_missing : float
             A value to give the heat if a node is available in the network,
             but not in the p-values
+        normalize : float
+            If provided, the total amount of input heat is scaled to the 
+            specified value. Otherwise, no transformation will be done.
         kwargs
             Any additional keyword arguments to be passed into the above
             functions
@@ -503,6 +507,9 @@ class Nbgwas(object):
             columns=[name]
         )
         heat = heat.reindex(self.node_names).fillna(fill_missing)
+
+        if normalize is not None: 
+            heat = (heat/heat.sum())*normalize
 
         if not hasattr(self, "heat"):
             self.heat = heat
