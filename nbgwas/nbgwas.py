@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 import ndex2
 import ndex2.client as nc
 import networkx as nx
+import igraph as ig
 import numpy as np
 import pandas as pd
 from scipy.sparse import coo_matrix,csc_matrix
@@ -120,6 +121,7 @@ class Nbgwas(object):
 
         self.verbose = verbose
         self.validate = validate
+        self.network_lib = None
 
         self.snp_cols = {
             'snp_chrom_col': snp_chrom_col,
@@ -391,9 +393,18 @@ class Nbgwas(object):
 
     @network.setter
     def network(self, network):
-        if network is not None and not isinstance(network, nx.Graph):
+        if isinstance(network, nx.Graph): 
+            self._network_lib = 'networkx'
+        
+        elif isinstance(network, ig.Graph): 
+            self._network_lib = 'igraph'
+
+        elif network is None: 
+            self._network_lib = None
+
+        else: 
             raise ValueError(
-                "Network must be a networks Graph of DiGraph object!"
+                "Network must be a networkx or igraph Graph object!"
             )
 
         self._network = network
@@ -402,18 +413,23 @@ class Nbgwas(object):
             self.graphs = {'full_network': network}
 
         if network is not None:
-            self.node_names = [
-                self._network.node[n].get(self.node_name, n) \
-                    for n in self.network.nodes()
-            ]
+            if self._network_lib == 'networkx': 
+                nodes = self.network.node.keys() 
 
-            self.node_2_name = dict(zip(
-                self.network.node.keys(), self.node_names
-            ))
+                self.node_names = [
+                    self._network.node[n].get(self.node_name, n) \
+                        for n in self.network.nodes()
+                ]
 
-            self.name_2_node = dict(zip(
-                self.node_names, self.network.node.keys()
-            ))
+            else: 
+                nodes = [v.index for v in self.network.vs]
+                if self.node_name in self.network.vs.attributes(): 
+                    self.node_names = self.network.vs[self.node_name]
+                else: 
+                    self.node_names = nodes
+
+            self.node_2_name = dict(zip(nodes, self.node_names))
+            self.name_2_node = dict(zip(self.node_names, nodes))
 
         else:
             self.node_names = None
