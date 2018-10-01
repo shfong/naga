@@ -31,7 +31,11 @@ def igraph_adj_matrix(G, weighted=False):
 
 
 class Network(ABC): 
-    """Base class for all network classes to inherit from"""
+    """Base class for all network classes to inherit from
+    
+    This base class defines interfacing functionalities that 
+    Nbgwas expects. 
+    """
 
     def __init__(self, network, node_name = "name"): 
         self.network = network 
@@ -55,7 +59,11 @@ class Network(ABC):
         pass
 
     @abstractmethod 
-    def annotate_network(self): 
+    def set_node_attributes(self, attr_map): 
+        """set node attributes 
+
+        attr_map is a dictionary of dictionaries"""
+
         pass 
 
     #TODO: add gene name conversion function
@@ -89,13 +97,7 @@ class NxNetwork(Network):
         return self
 
     def add_laplacian_matrix(self, weights=None): 
-        if not hasattr(self, "adjacency_matrix"): 
-            self.add_adjacency_matrix(weights=weights)
-
-        D = diags(self.adjacency_matrix.sum(axis=1))
-        
-        #TODO: Need to test this functionality against networkx
-        self.laplacian = D - self.adjacency_matrix
+        self.laplacian = nx.laplacian_matrix(self.network, weight=weights)
 
         return self  
 
@@ -110,6 +112,19 @@ class NxNetwork(Network):
 
     def get_node_attributes(self): 
         return self.network.node
+
+    def set_node_attributes(self, attr_map, namespace="nodenames"):
+        for attr_name, d in attr_map.items():  
+            if namespace == "nodenames": 
+                d = {self.name_2_node[k]:v for k, v in d.items() if k in self.name_2_node}
+
+            nx.set_node_attributes(
+                self.network, 
+                attr_name, 
+                d
+            )
+
+        return self
 
 
 class IgNetwork(Network): 
@@ -160,6 +175,23 @@ class IgNetwork(Network):
     def get_node_attributes(self): 
         attr = {}
         for a in self.network.attributes():  
-            attr[a] = dict(zip())
+            attr[a] = dict([(i.index, i.attributes()) for i in G.vs])
 
         return attr
+
+    def set_node_attributes(self, attr_map, namespace="nodenames"): 
+        for attr_name, d in attr_map.items():
+            attr = [None]*len(self.network.vs)
+            for ind, v in enumerate(self.network.vs): 
+                if namespace == "nodenames": 
+                    attr[ind] = d[v[self.node_name]]
+
+                elif namespace == "nodeids": 
+                    attr[ind] = d[v.index] 
+
+                else: 
+                    raise ValueError("namespace must be nodenames or nodeids")
+
+            self.network.vs[attr_name] = attr
+
+        return self

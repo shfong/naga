@@ -434,7 +434,7 @@ class Nbgwas(object):
     def get_laplacian_matrix(self, weights=None): 
         self._network.add_laplacian_matrix(weights=weights)
 
-        return self._network.laplacian_matrix
+        return self._network.laplacian
 
 
     def cache_network_data(self):
@@ -817,7 +817,7 @@ class Nbgwas(object):
             if isinstance(values, str):
                 data = {values:data}
 
-        self._network.annotate_network(data, namespace="nodenames")
+        self._network.set_node_attributes(data, namespace="nodenames")
 
         return self
 
@@ -833,8 +833,7 @@ class Nbgwas(object):
             The number of
         """
 
-        #TODO: this needs to be moved to network.py
-        center = self.name_2_node[gene]
+        center = self._network.name_2_node[gene]
 
         #this should work for both igraph and networkx
         nodes = get_neighbors(self.network, neighbors, center)
