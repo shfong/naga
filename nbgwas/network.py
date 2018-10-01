@@ -2,14 +2,22 @@ from abc import ABC, abstractmethod
 import networkx as nx
 import numpy as np
 import igraph as ig
-from scipy.sparse import diags, coo_matrix
+from scipy.sparse import diags, coo_matrix, csr_matrix
+import mygene
 
 def igraph_adj_matrix(G, weighted=False): 
-    length = len(G.es) 
+
+    length = len(G.es)*2
+
     row_index, col_index = np.empty(length), np.empty(length)
 
-    for ind, e in enumerate(G.es): 
-        row_index[ind], col_index[ind] = e.tuple
+    count = 0
+    for ind, e in enumerate(G.get_adjlist()): 
+        n = len(e)
+        row_index[count:count + n] = ind 
+        col_index[count:count + n] = e
+
+        count += n
 
     if weighted:
         if weighted not in G.es.attributes(): 
@@ -24,10 +32,10 @@ def igraph_adj_matrix(G, weighted=False):
 
     adj = coo_matrix((vals, (row_index, col_index)), shape=(n_nodes, n_nodes))
 
-    if not G.is_directed(): 
-        adj += adj.T
+    #if not G.is_directed(): 
+    #    adj += adj.T
 
-    return adj
+    return csr_matrix(adj)
 
 
 class Network(ABC): 
@@ -37,7 +45,7 @@ class Network(ABC):
     Nbgwas expects. 
     """
 
-    def __init__(self, network, node_name = "name"): 
+    def __init__(self, network=None, node_name = "name"): 
         self.network = network 
         self.node_name = node_name 
         super().__init__() 
@@ -59,35 +67,78 @@ class Network(ABC):
         pass
 
     @abstractmethod 
-    def set_node_attributes(self, attr_map): 
+    def set_node_attributes(self, attr_map, namespace="nodeids"): 
         """set node attributes 
 
         attr_map is a dictionary of dictionaries"""
 
         pass 
 
+    @abstractmethod 
+    def set_node_names(self, attr=None): 
+        pass
+
     #TODO: add gene name conversion function
+    def convert_node_names(
+        self, 
+        attribute="name", 
+        current="entrezgene", 
+        to="symbol", 
+        use_key_for_missing=False
+    ): 
+
+        mg = mygene.MyGeneInfo()
+        node_attributes = self.get_node_attributes()
+
+        attr = [v[attribute] for k,v in node_attributes.items()]
+
+        gene_map = mg.querymany(
+            attr, 
+            scopes=current, 
+            field=to,
+            as_dataframe=True 
+        )[to].to_dict() 
+
+        change_to = {
+            to: {
+                k: gene_map.get(v[attribute], k if use_key_for_missing else None) for k,v in node_attributes.items()
+            }
+        }
+
+        self.set_node_attributes(change_to, namespace="nodeids")
+
+        return self
 
 
 class NxNetwork(Network): 
     """Internal object to expose networkx functionalities"""
 
-    def __init__(self, network, node_name="name"): 
+    def __init__(self, network=None, node_name="name"): 
         super().__init__(network, node_name=node_name)
 
         if network is not None:
-            nodes = self.network.node.keys() 
-
-            self.node_names = [
-                self.network.node[n].get(self.node_name, n) \
-                    for n in self.network.nodes()
-            ]
-
-            self.node_2_name = dict(zip(nodes, self.node_names))
-            self.name_2_node = dict(zip(self.node_names, nodes))
+            self.set_node_names(attr=node_name)
 
         else: 
             self.node_names = None
+
+    def set_node_names(self, attr=None): 
+        if attr is None: 
+            attr = self.node_name
+
+        self.node_name=attr
+
+        nodes = self.network.node.keys() 
+
+        self.node_names = [
+            str(self.network.node[n].get(self.node_name, n)) \
+                for n in self.network.nodes()
+        ]
+
+        self.node_2_name = dict(zip(nodes, self.node_names))
+        self.name_2_node = dict(zip(self.node_names, nodes))
+
+        return self
 
     def add_adjacency_matrix(self, weights=None): 
         self.adjacency_matrix = nx.adjacency_matrix(
@@ -130,21 +181,33 @@ class NxNetwork(Network):
 class IgNetwork(Network): 
     """Internal object to expose igraph functionalities"""
 
-    def __init__(self, network, node_name="name"): 
+    def __init__(self, network=None, node_name="name"): 
         super().__init__(network, node_name=node_name) 
 
         if network is not None: 
-            nodes = [v.index for v in self.network.vs]
-            if self.node_name in self.network.vs.attributes(): 
-                self.node_names = self.network.vs[self.node_name]
-            else: 
-                self.node_names = nodes
-            
-            self.node_2_name = dict(zip(nodes, self.node_names))
-            self.name_2_node = dict(zip(self.node_names, nodes))
+            self.set_node_names(attr=node_name)
 
         else: 
             self.node_names = None
+
+    def set_node_names(self, attr=None): 
+        if attr is None: 
+            attr = self.node_name 
+
+        self.node_name = attr
+
+        nodes = [v.index for v in self.network.vs]
+        if self.node_name in self.network.vs.attributes(): 
+            self.node_names = self.network.vs[self.node_name]
+        else: 
+            self.node_names = nodes
+
+        self.node_names = [str(i) for i in self.node_names]
+        
+        self.node_2_name = dict(zip(nodes, self.node_names))
+        self.name_2_node = dict(zip(self.node_names, nodes))
+
+        return self
 
     def add_adjacency_matrix(self, weights=None): 
         self.adjacency_matrix = igraph_adj_matrix(
@@ -174,8 +237,9 @@ class IgNetwork(Network):
 
     def get_node_attributes(self): 
         attr = {}
-        for a in self.network.attributes():  
-            attr[a] = dict([(i.index, i.attributes()) for i in G.vs])
+        for v in self.network.vs:
+            #attr[a] = dict([(i.index, i.attributes()) for i in self.network.vs])
+            attr[v.index] = v.attributes()
 
         return attr
 

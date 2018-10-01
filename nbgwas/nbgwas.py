@@ -443,6 +443,17 @@ class Nbgwas(object):
 
         return self
 
+    def convert_node_names(self, attribute="name", to="symbol"): 
+        self._network.convert_node_names(attribute=attribute, to=to)
+
+        return self
+
+
+    def set_node_names(self, attr="name"): 
+        self._network.set_node_names(attr=attr)
+
+        return self
+
 
     def extract_network_attributes(self, pvalues=None, heat=None, genes="name"):
         """Build internal dataframes from network attributes"""
