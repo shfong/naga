@@ -8,21 +8,20 @@ from __future__ import print_function
 from collections import defaultdict, OrderedDict, namedtuple
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+import networkx as nx 
+import igraph as ig
 import ndex2
 import ndex2.client as nc
-import networkx as nx
-import igraph as ig
 import numpy as np
 import pandas as pd
+from py2cytoscape.data.cyrest_client import CyRestClient
 from scipy.sparse import coo_matrix,csc_matrix
-from scipy.sparse.linalg import expm, expm_multiply
 from scipy.stats import hypergeom
 import time
 import warnings
 
-from py2cytoscape.data.cyrest_client import CyRestClient
-
 from .assign_snps_to_genes import assign_snps_to_genes
+from .network import NxNetwork, IgNetwork
 from .propagation import random_walk_rst, get_common_indices, heat_diffusion
 from .utils import get_neighbors, binarize, neg_log_val
 
@@ -51,6 +50,7 @@ def _validate_dataframe(df, require_columns, var_name="df"):
                    ",".join(missing_columns)
                )
             )
+
 
 def avoid_overwrite(name, iterable):
     """Take a list to and see if the string is in the iterable.
@@ -121,7 +121,6 @@ class Nbgwas(object):
 
         self.verbose = verbose
         self.validate = validate
-        self.network_lib = None
 
         self.snp_cols = {
             'snp_chrom_col': snp_chrom_col,
@@ -207,6 +206,11 @@ class Nbgwas(object):
             )
 
         self._protein_coding_table = df
+
+    
+    @property 
+    def node_names(self): 
+        return self._network.node_names
 
 
     def read_snp_table(
@@ -388,65 +392,62 @@ class Nbgwas(object):
         name.
         """
 
-        return self._network
+        if self._network is None: 
+            return None 
+
+        return self._network.network
 
 
     @network.setter
     def network(self, network):
-        if isinstance(network, nx.Graph): 
-            self._network_lib = 'networkx'
-        
-        elif isinstance(network, ig.Graph): 
-            self._network_lib = 'igraph'
+        if network is None: 
+            self._network = None 
 
-        elif network is None: 
-            self._network_lib = None
+        elif isinstance(network, nx.Graph): 
+            self._network = NxNetwork(network, node_name=self.node_name) 
+
+        elif isinstance(network, ig.Graph): 
+            self._network = IgNetwork(network, node_name=self.node_name)
 
         else: 
-            raise ValueError(
-                "Network must be a networkx or igraph Graph object!"
-            )
+            raise ValueError("Graph type is not understood. Must be a networkx object or an igraph object")
 
-        self._network = network
-
+        #TODO: Need to change were self.graphs point to (to Network maybe?)
         if not hasattr(self, "graphs"):
             self.graphs = {'full_network': network}
 
-        if network is not None:
-            if self._network_lib == 'networkx': 
-                nodes = self.network.node.keys() 
 
-                self.node_names = [
-                    self._network.node[n].get(self.node_name, n) \
-                        for n in self.network.nodes()
-                ]
+    @property 
+    def adjacency_matrix(self): 
+        if not hasattr(self._network, "adjacency_matrix"): 
+            self.get_adjacency_matrix()
+        
+        return self._network.adjacency_matrix
 
-            else: 
-                nodes = [v.index for v in self.network.vs]
-                if self.node_name in self.network.vs.attributes(): 
-                    self.node_names = self.network.vs[self.node_name]
-                else: 
-                    self.node_names = nodes
+    
+    def get_adjacency_matrix(self, weights=None): 
+        self._network.add_adjacency_matrix(weights=weights)
 
-            self.node_2_name = dict(zip(nodes, self.node_names))
-            self.name_2_node = dict(zip(self.node_names, nodes))
+        return self._network.adjacency_matrix
 
-        else:
-            self.node_names = None
+    
+    def get_laplacian_matrix(self, weights=None): 
+        self._network.add_laplacian_matrix(weights=weights)
+
+        return self._network.laplacian_matrix
 
 
     def cache_network_data(self):
-        if not hasattr(self, "adjacency_matrix"):
-            self.adjacency_matrix = nx.adjacency_matrix(self.network)
-
-        if not hasattr(self, "laplacian"):
-            self.laplacian = csc_matrix(nx.laplacian_matrix(self.network))
+        self.get_adjacency_matrix()
+        self.get_laplacian_matrix()
 
         return self
 
 
     def extract_network_attributes(self, pvalues=None, heat=None, genes="name"):
         """Build internal dataframes from network attributes"""
+
+        raise NotImplementedError
 
         df = pd.DataFrame.from_dict(self.network.node, orient="index")
 
@@ -793,7 +794,7 @@ class Nbgwas(object):
 
         return heat_df
 
-
+    #TODO: Move this to network.py and invoke
     def annotate_network(self, values="all"):
         """Return a subgraph with node attributes
 
@@ -816,11 +817,7 @@ class Nbgwas(object):
             if isinstance(values, str):
                 data = {values:data}
 
-        for key, d in data.items():
-            d = {self.name_2_node[k]:v for k,v in d.items() \
-                if k in self.name_2_node}
-
-            nx.set_node_attributes(self.network, key, d)
+        self._network.annotate_network(data, namespace="nodenames")
 
         return self
 
@@ -836,11 +833,13 @@ class Nbgwas(object):
             The number of
         """
 
+        #TODO: this needs to be moved to network.py
         center = self.name_2_node[gene]
-        nodes = get_neighbors(self.network, neighbors, center)
-        G = self.network.subgraph(nodes)
 
-        self.graphs[name] = G
+        #this should work for both igraph and networkx
+        nodes = get_neighbors(self.network, neighbors, center)
+
+        self.graphs[name] = self._network.subgraph(node_ids = nodes)
 
         return self
 
@@ -879,6 +878,7 @@ class Nbgwas(object):
 
         attr = nx.get_node_attributes(G, attributes)
 
+        #TODO: replace missing except behavior with default fall back value
         try:
             vals = [attr[i] for i in G.nodes()]
         except KeyError:
@@ -914,7 +914,12 @@ class Nbgwas(object):
         if not hasattr(self, "cyrest"):
             self.cyrest = CyRestClient()
 
-        hdl = self.cyrest.network.create_from_networkx(self.graphs[name])
+        if self._network_lib == "networkx": 
+            hdl = self.cyrest.network.create_from_networkx(self.graphs[name])
+
+        else: 
+            raise RuntimeError("Only networkx objects are supported for viewing in cytoscape")
+        
         self.cyrest.layout.apply(name='degree-circle', network=hdl)
 
         return self
@@ -941,6 +946,9 @@ class Nbgwas(object):
         password : str
             Password of the NDEx account
         """
+
+        if self._network_lib != "networkx": 
+            raise RuntimeError("Only networkx objects are supported for upload to NDEx.")
 
         try:
             g = ndex2.create_nice_cx_from_networkx(self.graphs[name])

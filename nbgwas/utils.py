@@ -74,23 +74,3 @@ def neg_log_val(a, floor=None):
         vals[vals < floor] = 0
 
     return vals
-
-def igraph_adj_matrix(G, weighted=False): 
-    length = len(G.es) 
-    row_index, col_index = np.empty(length), np.empty(length)
-
-    for ind, e in enumerate(G.es): 
-        row_index[ind], col_index[ind] = e.tuple
-
-    if weighted:
-        if weighted not in G.es.attributes(): 
-            raise ValueError("weighted argument not in graph edge attributes!")
-
-        vals = G.es[weighted]
-
-    else: 
-        vals = np.ones(length)
-
-    n_nodes = len(G.vs)
-
-    return coo_matrix((vals, (row_index, col_index)), shape=(n_nodes, n_nodes))
