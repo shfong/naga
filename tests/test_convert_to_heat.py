@@ -23,8 +23,6 @@ g = Nbgwas(
     gene_pval_col='P-value'
 )
 
-print(g.pvalues)
-
 def test_convert_to_heat(): 
     g.convert_to_heat(threshold=0.05, name='heat1') 
 
@@ -56,8 +54,6 @@ def test_convert_to_heat_dup_node_nmaes():
     )
 
     g.convert_to_heat(threshold=0.05, name='heat1', fill_missing=-1) 
-
-    print(g.heat)
 
     assert_array_almost_equal(
         g.heat.loc[[0,1,2,3,4], 'heat1'].values.ravel(), 

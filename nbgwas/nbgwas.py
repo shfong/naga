@@ -139,7 +139,7 @@ class Nbgwas(object):
             'end_col' : end_col
         }
 
-        self.node_name = node_name # The attribute contains the gene name
+        self._node_name = node_name # The attribute contains the gene name
                                    # on the network
 
         self.snp_level_summary = snp_level_summary
@@ -278,7 +278,7 @@ class Nbgwas(object):
     def read_cx_file(self, file, node_name="name"):
         """Load CX file as network"""
 
-        self.node_name = node_name
+        self._node_name = node_name
         network = ndex2.create_nice_cx_from_file(file).to_networkx()
         self.network = network
 
@@ -288,7 +288,7 @@ class Nbgwas(object):
     def read_nx_pickle_file(self, file, node_name="name"):
         """Read networkx pickle file as network"""
 
-        self.node_name = node_name
+        self._node_name = node_name
 
         network = nx.read_gpickle(file)
         self.network = network
@@ -303,7 +303,7 @@ class Nbgwas(object):
         node_name="name",
     ):
 
-        self.node_name = node_name
+        self._node_name = node_name
 
         #anon_ndex = nc.Ndex2("http://public.ndexbio.org")
         network_niceCx = ndex2.create_nice_cx_from_server(
@@ -404,10 +404,10 @@ class Nbgwas(object):
             self._network = None 
 
         elif isinstance(network, nx.Graph): 
-            self._network = NxNetwork(network, node_name=self.node_name) 
+            self._network = NxNetwork(network, node_name=self._node_name) 
 
         elif isinstance(network, ig.Graph): 
-            self._network = IgNetwork(network, node_name=self.node_name)
+            self._network = IgNetwork(network, node_name=self._node_name)
 
         else: 
             raise ValueError("Graph type is not understood. Must be a networkx object or an igraph object")
@@ -415,6 +415,11 @@ class Nbgwas(object):
         #TODO: Need to change were self.graphs point to (to Network maybe?)
         if not hasattr(self, "graphs"):
             self.graphs = {'full_network': network}
+
+
+    @property
+    def node_name(self): 
+        return self._network.node_name
 
 
     @property 
@@ -665,7 +670,10 @@ class Nbgwas(object):
             raise RuntimeError("Unexpected method name!")
 
         result_name = avoid_overwrite(result_name, self.heat.columns)
-        self.heat.loc[:, result_name] = df
+        df.columns = [result_name]
+
+        self.heat = pd.concat([self.heat, df], axis=1)
+        self.heat.index.name = "Node IDs"
         self.heat.sort_values(by=result_name, ascending=False, inplace=True)
 
         return self
@@ -696,8 +704,7 @@ class Nbgwas(object):
 
         if not hasattr(self, "heat"):
             warnings.warn(
-                "Attribute heat is not found. ",
-                "Generating using the binarize method."
+                "Attribute heat is not found. Generating using the binarize method."
             )
 
             self.convert_to_heat()
@@ -706,7 +713,7 @@ class Nbgwas(object):
             self.adjacency_matrix = nx.adjacency_matrix(self.network)
 
         common_indices, pc_ind, heat_ind = get_common_indices(
-            self.node_names,
+            self._network.node_ids,
             self.heat.index
         )
 
@@ -723,6 +730,7 @@ class Nbgwas(object):
         )
 
         df = df.set_index('Genes').sort_values(by='PROPVALUES', ascending=False)
+        df.index = df.index.astype(int)
 
         return df
 
@@ -752,8 +760,7 @@ class Nbgwas(object):
 
         if not hasattr(self, "heat"):
             warnings.warn(
-                "Attribute heat is not found. ",
-                "Generating using the binarize method."
+                "Attribute heat is not found. Generating using the binarize method."
             )
 
             self.convert_to_heat()
@@ -795,25 +802,24 @@ class Nbgwas(object):
 
         if not hasattr(self, "heat"):
             warnings.warn(
-                "Attribute heat is not found. ",
-                "Generating using the binarize method."
+                "Attribute heat is not found. Generating using the binarize method."
             )
 
             self.convert_to_heat()
 
         out_vector = heat_diffusion(
             self.laplacian,
-            self.heat.loc[self.node_names, heat].values.ravel(),
+            self.heat.loc[self._network.node_ids, heat].values.ravel(),
             start=0,
             end=t
         )
 
-        out_dict= {'prop': out_vector,'Gene':self.node_names}
+        out_dict= {'prop': out_vector,'Gene':self._network.node_ids}
         heat_df=pd.DataFrame.from_dict(out_dict).set_index('Gene')
 
         return heat_df
 
-    #TODO: Move this to network.py and invoke
+
     def annotate_network(self, values="all"):
         """Return a subgraph with node attributes
 
@@ -825,10 +831,10 @@ class Nbgwas(object):
 
         if values=="all":
             data = self.heat.to_dict()
-            data.update(self.pvalues.to_dict())
+            #data.update(self.pvalues.to_dict())
 
-        elif values == "p-values":
-            data = self.pvalues.to_dict()
+        # elif values == "p-values":
+            # data = self.pvalues.to_dict()
 
         else:
             data = self.heat[values].to_dict()
@@ -836,7 +842,7 @@ class Nbgwas(object):
             if isinstance(values, str):
                 data = {values:data}
 
-        self._network.set_node_attributes(data, namespace="nodenames")
+        self._network.set_node_attributes(data, namespace="nodeids")
 
         return self
 
@@ -901,8 +907,7 @@ class Nbgwas(object):
             vals = [attr[i] for i in G.nodes()]
         except KeyError:
             warnings.warn(
-                "The specified graph does not have the attribute %s. ",
-                "Replacing values with 0."
+                "The specified graph does not have the attribute %s. Replacing values with 0." % name
             )
             vals = [0 for _ in G.nodes()]
 

@@ -120,6 +120,20 @@ class Network(ABC):
 
         return self
 
+    def map_attr_data(self, data, store=False): 
+        """
+        Parameter
+        ---------
+        data : dict
+        """
+        
+        values = [data.get(node, None) for node in self.node_ids]
+
+        if store: 
+            self.set_node_attributes({store: dict(zip(self.node_ids, values))})
+        else: 
+            return values
+
 
 class NxNetwork(Network): 
     """Internal object to expose networkx functionalities"""
@@ -135,7 +149,7 @@ class NxNetwork(Network):
 
     @property 
     def node_ids(self): 
-        return self.network.node
+        return self.network.nodes()
 
     def set_node_names(self, attr=None): 
         if attr is None: 
