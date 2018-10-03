@@ -524,23 +524,31 @@ class Nbgwas(object):
             raise ValueError("Method must be in %s" % allowed)
 
         vals = self.pvalues.values.ravel()
+
         if method == 'binarize':
             heat = binarize(vals, threshold=kwargs.get('threshold', 5e-6))
         elif method == 'neg_log':
             heat = neg_log_val(vals, floor=kwargs.get('floor', None))
 
-        heat = pd.DataFrame(
-            heat[...,np.newaxis],
-            index = self.pvalues.index,
-            columns=[name]
-        )
-        heat = heat.reindex(self.node_names).fillna(fill_missing)
-
         if normalize is not None: 
             heat = (heat/heat.sum())*normalize
 
+        heat_map = dict(zip(self.pvalues.index, heat)) 
+
+        heat = pd.DataFrame(
+            [heat_map.get(self._network.node_2_name[i], fill_missing) for i in self._network.node_ids], 
+            index = self._network.node_ids, 
+            columns=[name]
+        )
+        heat.index.name = 'Node IDs'
+
         if not hasattr(self, "heat"):
             self.heat = heat
+
+            #Add Names
+            self.heat.loc[:, self.node_name] = [
+                self._network.node_2_name[i] for i in self.heat.index
+            ] 
 
         else:
             name = avoid_overwrite(name, self.heat.columns)

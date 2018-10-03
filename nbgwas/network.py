@@ -70,9 +70,20 @@ class Network(ABC):
     def set_node_attributes(self, attr_map, namespace="nodeids"): 
         """set node attributes 
 
-        attr_map is a dictionary of dictionaries"""
+        attr_map is a dictionary of dictionaries
+
+        TODO
+        ----
+        - Need to make sure the required attributes are created (there are 3 of them)
+
+        """
 
         pass 
+
+    @property
+    @abstractmethod
+    def node_ids(self): 
+        pass
 
     @abstractmethod 
     def set_node_names(self, attr=None): 
@@ -121,6 +132,10 @@ class NxNetwork(Network):
 
         else: 
             self.node_names = None
+
+    @property 
+    def node_ids(self): 
+        return self.network.node
 
     def set_node_names(self, attr=None): 
         if attr is None: 
@@ -189,6 +204,10 @@ class IgNetwork(Network):
 
         else: 
             self.node_names = None
+
+    @property
+    def node_ids(self): 
+        return [v.index for v in self.network.vs]
 
     def set_node_names(self, attr=None): 
         if attr is None: 
