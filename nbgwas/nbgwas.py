@@ -401,7 +401,7 @@ class Nbgwas(object):
     @network.setter
     def network(self, network):
         if network is None: 
-            self._network = None 
+            self._network = NxNetwork(None, node_name=self._node_name) 
 
         elif isinstance(network, nx.Graph): 
             self._network = NxNetwork(network, node_name=self._node_name) 
@@ -556,7 +556,7 @@ class Nbgwas(object):
             ] 
 
         else:
-            name = avoid_overwrite(name, self.heat.columns)
+            #name = avoid_overwrite(name, self.heat.columns)
             self.heat.loc[:, name] = heat
 
         self.heat.sort_values(name, ascending=False, inplace=True)
@@ -669,7 +669,7 @@ class Nbgwas(object):
         else:
             raise RuntimeError("Unexpected method name!")
 
-        result_name = avoid_overwrite(result_name, self.heat.columns)
+        #result_name = avoid_overwrite(result_name, self.heat.columns)
         df.columns = [result_name]
 
         self.heat = pd.concat([self.heat, df], axis=1)
@@ -1009,7 +1009,7 @@ class Nbgwas(object):
 
         else:
             genes = self.heat.sort_values(by=rank_col, ascending=False)
-            genes = genes.iloc[:top].index
+            genes = genes.iloc[:top][self.node_name]
 
         intersect = set(genes).intersection(set(gold))
         score = len(intersect)
@@ -1045,6 +1045,6 @@ class Nbgwas(object):
 
         else:
             genes = self.heat.sort_values(by=rank_col, ascending=False)
-            genes = genes.iloc[:top].index
+            genes = genes.iloc[:top][self.node_name]
 
         return sum([gold.get(i, 1) < threshold for i in genes])

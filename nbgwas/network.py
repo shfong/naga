@@ -11,31 +11,36 @@ def igraph_adj_matrix(G, weighted=False):
 
     row_index, col_index = np.empty(length), np.empty(length)
 
-    count = 0
-    for ind, e in enumerate(G.get_adjlist()): 
-        n = len(e)
-        row_index[count:count + n] = ind 
-        col_index[count:count + n] = e
+    # count = 0
+    # for ind, e in enumerate(G.get_adjlist(mode="OUT")): 
+    #     n = len(e)
+    #     row_index[count:count + n] = ind 
+    #     col_index[count:count + n] = e
 
-        count += n
+    #     count += n
 
-    if weighted:
-        if weighted not in G.es.attributes(): 
-            raise ValueError("weighted argument not in graph edge attributes!")
+    # if weighted:
+    #     if weighted not in G.es.attributes(): 
+    #         raise ValueError("weighted argument not in graph edge attributes!")
 
-        vals = G.es[weighted]
+    #     vals = [G.es[(i,j)] for i,j in zip(row_index, col_index)]
 
-    else: 
-        vals = np.ones(length)
+    # else: 
+    #     vals = np.ones(length)
+
+    source, target, weights = zip(*[(i.source, i.target, i[weighted] if weighted else 1) for i in G.es])
 
     n_nodes = len(G.vs)
 
-    adj = coo_matrix((vals, (row_index, col_index)), shape=(n_nodes, n_nodes))
+    #print(len(vals), len(row_index), len(col_index))
 
-    #if not G.is_directed(): 
-    #    adj += adj.T
+    #adj = coo_matrix((vals, (row_index, col_index)), shape=(n_nodes, n_nodes))
+    adj = csr_matrix(coo_matrix((weights, (source, target)), shape=(n_nodes, n_nodes)))
 
-    return csr_matrix(adj)
+    if not G.is_directed(): 
+       adj += adj.T
+
+    return adj
 
 
 class Network(ABC): 
