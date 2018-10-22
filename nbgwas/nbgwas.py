@@ -499,7 +499,8 @@ class Nbgwas(object):
         if method == 'binarize':
             heat = binarize(vals, threshold=kwargs.get('threshold', 5e-6))
         elif method == 'neg_log':
-            heat = neg_log_val(vals, floor=kwargs.get('floor', None))
+            heat = neg_log_val(vals, floor=kwargs.get('floor', None),
+                                ceiling=kwargs.get('ceiling', 10.0))
 
         heat = pd.DataFrame(
             heat[...,np.newaxis],

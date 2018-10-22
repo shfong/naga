@@ -51,7 +51,7 @@ def binarize(a, threshold=5e-6):
     return binned
 
 
-def neg_log_val(a, floor=None):
+def neg_log_val(a, floor=None, ceiling=10.0):
     """Negative log of an array
 
     Parameters
@@ -61,6 +61,9 @@ def neg_log_val(a, floor=None):
     floor : float
         Threshold after transformation. Below which, the
         transformed array will be floored to 0.
+    ceiling : float 
+        Threshold capping the maximum value after transformation.
+        Above which the transformed array will be capped to ceiling.
     """
 
     if not isinstance(a, np.ndarray):
@@ -70,5 +73,8 @@ def neg_log_val(a, floor=None):
 
     if floor is not None:
         vals[vals < floor] = 0
-
+    
+    if ceiling is not None:
+        vals[vals > ceiling] = ceiling
+        
     return vals
