@@ -478,7 +478,7 @@ class Nbgwas(object):
 
             For binarize:
             * threshold : float
-                Default to 5*10^-6.
+                Default to 5*10^-8.
 
             For neg_log:
             * floor : float
@@ -497,7 +497,7 @@ class Nbgwas(object):
 
         vals = self.pvalues.values.ravel()
         if method == 'binarize':
-            heat = binarize(vals, threshold=kwargs.get('threshold', 5e-6))
+            heat = binarize(vals, threshold=kwargs.get('threshold', 5e-8))
         elif method == 'neg_log':
             heat = neg_log_val(vals, floor=kwargs.get('floor', None),
                                 ceiling=kwargs.get('ceiling', 10.0))

@@ -39,7 +39,7 @@ def get_neighbors(graph, n, center):
         
     return nodes
 
-def binarize(a, threshold=5e-6):
+def binarize(a, threshold=5e-8):
     """Binarize array based on threshold"""
 
     if not isinstance(a, np.ndarray):
