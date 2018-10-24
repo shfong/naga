@@ -158,6 +158,9 @@ def assign_snps_to_genes(
         assigned_df.index.name = 'Gene'
         assigned_df = assigned_df.reset_index()
 
+        assigned_df = assigned_df.loc[pd.notnull(assigned_df.iloc[:, -1])] #Remove genes that do not have 
+                                                                    #p-values
+
         return assigned_df
 
     return assigned_pvals
