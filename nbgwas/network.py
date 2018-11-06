@@ -6,6 +6,10 @@ import igraph as ig
 from scipy.sparse import diags, coo_matrix, csr_matrix
 import pandas as pd
 import mygene
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+from py2cytoscape.data.cyrest_client import CyRestClient
+import warnings
 
 def igraph_adj_matrix(G, weighted=False): 
 
@@ -30,7 +34,20 @@ class Network(ABC):
     def __init__(self, network=None, node_name = "name"): 
         self.network = network 
         self.node_name = node_name 
+
         super().__init__() 
+
+    @property
+    @abstractmethod
+    def adjacency_matrix(self): 
+        pass
+
+
+    @property
+    @abstractmethod
+    def laplacian_matrix(self): 
+        pass
+
 
     @abstractmethod
     def add_adjacency_matrix(self): 
@@ -70,6 +87,11 @@ class Network(ABC):
     @abstractmethod 
     def set_node_names(self, attr=None): 
         pass
+
+    # @property 
+    # @abstractmethod 
+    # def node_names(self): 
+    #     pass
 
     #TODO: add gene name conversion function
     def convert_node_names(
@@ -118,7 +140,28 @@ class Network(ABC):
 
     @property
     def node_table(self): 
-        return pd.DataFrame.from_dict(self.get_node_attributes()).T
+        if not hasattr(self, "_node_table"): 
+            self._node_table = pd.DataFrame.from_dict(self.get_node_attributes()).T
+            self._node_table = self._node_table.fillna(0)
+
+        return self._node_table
+
+    @node_table.deleter
+    def node_table(self): 
+        if hasattr(self, "_node_table"): 
+            del self._node_table
+
+    def refresh_node_table(self): 
+        del self.node_table
+
+        self.node_table
+
+        return self
+
+    def refresh_node_attributes(self): 
+        self.set_node_attributes(self.node_table.to_dict(), namespace="nodeids")
+
+        return self
 
 
 class NxNetwork(Network): 
@@ -157,9 +200,24 @@ class NxNetwork(Network):
 
         return self
 
+    
+    @property
+    def adjacency_matrix(self): 
+        if not hasattr(self, "_adjacency_matrix"): 
+            self.add_adjacency_matrix
+
+        return self._adjacency_matrix
+
+    @property
+    def laplacian_matrix(self): 
+        if not hasattr(self, "_laplacian_matrix"): 
+            self.add_laplacian_matrix
+
+        return self._laplacian_matrix
+
 
     def add_adjacency_matrix(self, weights=None): 
-        self.adjacency_matrix = nx.adjacency_matrix(
+        self._adjacency_matrix = nx.adjacency_matrix(
             self.network, weight=weights
         )
 
@@ -167,7 +225,7 @@ class NxNetwork(Network):
 
 
     def add_laplacian_matrix(self, weights=None): 
-        self.laplacian = nx.laplacian_matrix(self.network, weight=weights)
+        self._laplacian = nx.laplacian_matrix(self.network, weight=weights)
 
         return self  
 
@@ -234,6 +292,116 @@ class NxNetwork(Network):
 
         return cls(network, node_name=node_name)
 
+    def to_ndex(
+        self,
+        name="subgraph",
+        server="http://test.ndexbio.org",
+        username="scratch2",
+        password="scratch2"
+    ):
+
+        """Uploads graph to NDEx
+
+        Parameters
+        ----------
+        name : str
+            The key in self.graphs that contains the graph
+        server: str
+            The NDEx server hyperlink
+        username : str
+            Username of the NDEx account
+        password : str
+            Password of the NDEx account
+        """
+
+        try:
+            g = ndex2.create_nice_cx_from_networkx(self.network)
+        except KeyError:
+            raise KeyError("%s is not in self.graphs dictionary!" % name)
+
+        uuid = g.upload_to(
+            server=server,
+            username=username,
+            password=password
+        )
+
+        return uuid
+
+
+    def view(
+        self,
+        attributes="Heat",
+        vmin=0,
+        vmax=1,
+        cmap=plt.cm.Blues
+    ):
+        """Plot the subgraph
+
+        Parameters
+        ----------
+        name : str
+            The key in self.graphs that contains the graph
+        attributes : str
+            The node attributes on the network (in self.graphs) to be
+            visualized. Note that this means, `annotate_network` should
+            be used first to add the node attributes
+        vmin : float
+            The lower end of the colorbar
+        vmax : float
+            The upper end of the colorbar
+        cmap :
+            Matplotlib colormap object
+        """
+
+        fig, ax = plt.subplots()
+
+        attr = nx.get_node_attributes(self.network, attributes)
+
+        #TODO: replace missing except behavior with default fall back value
+        try:
+            vals = [attr[i] for i in G.nodes()]
+        except KeyError:
+            warnings.warn(
+                "The specified graph does not have the attribute %s. Replacing values with 0." % name
+            )
+            vals = [0 for _ in G.nodes()]
+
+        nx.draw(
+            self.network,
+            ax=ax,
+            node_color=vals,
+            labels=self.node_names,
+            vmin=vmin,
+            vmax=vmax,
+            cmap=cmap
+        )
+
+        sm = plt.cm.ScalarMappable(cmap=plt.cm.Blues,
+            norm=mpl.colors.Normalize(vmin=vmin, vmax=vmax)
+        )
+
+        sm._A = []
+        plt.colorbar(sm)
+
+        return fig, ax
+
+
+    def view_in_cytoscape(self, name="subgraph"):
+        """Ports subgraph to Cytoscape"""
+
+        if not hasattr(self, "cyrest"):
+            self.cyrest = CyRestClient()
+
+        if self._network_lib == "networkx": 
+            hdl = self.cyrest.network.create_from_networkx(self.graphs[name])
+
+        else: 
+            raise RuntimeError("Only networkx objects are supported for viewing in cytoscape")
+        
+        self.cyrest.layout.apply(name='degree-circle', network=hdl)
+
+        return self
+
 
 class IgNetwork(Network): 
     """Internal object to expose igraph functionalities"""
@@ -270,8 +438,22 @@ class IgNetwork(Network):
 
         return self
 
+    @property
+    def adjacency_matrix(self): 
+        if not hasattr(self, "_adjacency_matrix"): 
+            self.add_adjacency_matrix()
+
+        return self._adjacency_matrix
+
+    @property
+    def laplacian_matrix(self): 
+        if not hasattr(self, "_laplacian_matrix"): 
+            self.add_laplacian_matrix()
+
+        return self._laplacian_matrix
+
     def add_adjacency_matrix(self, weights=None): 
-        self.adjacency_matrix = igraph_adj_matrix(
+        self._adjacency_matrix = igraph_adj_matrix(
             self.network, weighted=weights)
 
         return self
@@ -283,7 +465,7 @@ class IgNetwork(Network):
         D = diags(self.adjacency_matrix.sum(axis=1))
         
         #TODO: Need to test this functionality against networkx
-        self.laplacian = D - self.adjacency_matrix
+        self._laplacian_matrix = D - self.adjacency_matrix
 
         return self
     

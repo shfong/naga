@@ -1,20 +1,9 @@
-"""Network boosted GWAS package
-
-This package takes GWAS SNP level summary statistics and re-prioritizes
-using network data
-"""
-
 from __future__ import print_function
 from collections import defaultdict, OrderedDict, namedtuple
-import matplotlib as mpl
-import matplotlib.pyplot as plt
 import networkx as nx 
 import igraph as ig
-import ndex2
-import ndex2.client as nc
 import numpy as np
 import pandas as pd
-from py2cytoscape.data.cyrest_client import CyRestClient
 from scipy.sparse import coo_matrix,csc_matrix
 from scipy.stats import hypergeom
 import time
@@ -22,49 +11,9 @@ import warnings
 
 from .assign_snps_to_genes import assign_snps_to_genes
 from .network import NxNetwork, IgNetwork
+from .tables import Genes, Snps
 from .propagation import random_walk_rst, get_common_indices, heat_diffusion
 from .utils import get_neighbors, binarize, neg_log_val
-
-
-def _validate_dataframe(df, require_columns, var_name="df"):
-    """Checks to see if a dataframe has the require columns
-
-    The dataframe is allowed to be None or a pandas DataFrame.
-    """
-
-    if df is None:
-        return None
-
-    if not isinstance(df, pd.DataFrame):
-        raise ValueError("%s must be a pandas DataFrame!" % var_name)
-    else:
-        req_col_vals = set(require_columns.values())
-        in_cols = set(df.columns)
-        if not in_cols.issuperset(req_col_vals):
-            missing_columns = req_col_vals.difference(in_cols)
-
-            raise ValueError("%s must include %s. " % (
-                var_name, ",".join(require_columns.keys())
-            ), "" "The following columns are missing from %s: %s" % (
-                   var_name,
-                   ",".join(missing_columns)
-               )
-            )
-
-
-def avoid_overwrite(name, iterable):
-    """Take a list to and see if the string is in the iterable.
-
-    If it is, then the string is returned with the current count. Otherwise,
-    the string itself is returned.
-    """
-
-    if name not in iterable:
-        return name
-
-    else:
-        count = sum([1 for i in iterable if name in i])
-        return name + " (%s)" % str(count + 1)
 
 
 class Nbgwas(object):
@@ -122,264 +71,28 @@ class Nbgwas(object):
         self.verbose = verbose
         self.validate = validate
 
-        self.snp_cols = {
-            'snp_chrom_col': snp_chrom_col,
-            'bp_col' : bp_col,
-            'snp_pval_col' : snp_pval_col
-        }
+        self.genes = Genes(
+            gene_level_summary, 
+            pval_col=gene_pval_col, 
+            name_col=gene_col, 
+        )
 
-        self.gene_cols = {
-            'gene_pval_col' : gene_pval_col,
-            'gene_col' : gene_col
-        }
-
-        self.pc_cols = {
-            'pc_chrom_col' : pc_chrom_col,
-            'start_col' : start_col,
-            'end_col' : end_col
-        }
+        self.snps = Snps(
+            snp_level_summary, 
+            protein_coding_table, 
+            snp_chrom_col=snp_chrom_col,
+            snp_bp_col=bp_col, 
+            pval_col=snp_pval_col, 
+            pc_chrom_col=pc_chrom_col, 
+            start_col=start_col,
+            end_col=end_col
+        )
 
         self._node_name = node_name # The attribute contains the gene name
                                    # on the network
 
-        self.snp_level_summary = snp_level_summary
-        self.gene_level_summary = gene_level_summary
-        self.protein_coding_table = protein_coding_table
         self.network = network
 
-
-    @property
-    def snp_level_summary(self):
-        return self._snp_level_summary
-
-
-    @snp_level_summary.setter
-    def snp_level_summary(self, df):
-        if self.validate:
-            _validate_dataframe(
-                df,
-                self.snp_cols,
-                var_name="snp_level_summary"
-            )
-        self._snp_level_summary = df
-
-
-    @property
-    def gene_level_summary(self):
-        """pd.DataFrame : DataFrame that includes the gene_level_summary
-
-        If the gene_level_summary is overwritten, the DataFrame must include
-        ['Gene', 'Top_SNP P-value'] and the previously created pvalues
-        would be destroyed.
-        """
-
-        return self._gene_level_summary
-
-
-    @gene_level_summary.setter
-    def gene_level_summary(self, df):
-        if self.validate:
-            _validate_dataframe(
-                df,
-                self.gene_cols,
-                var_name="gene_level_summary"
-            )
-
-        self._gene_level_summary = df
-
-        if hasattr(self, "pvalues"):
-            del self.pvalues
-
-
-    @property
-    def protein_coding_table(self):
-        return self._protein_coding_table
-
-
-    @protein_coding_table.setter
-    def protein_coding_table(self, df):
-        if self.validate:
-            _validate_dataframe(
-                df,
-                self.pc_cols,
-                var_name="protein_coding_table"
-            )
-
-        self._protein_coding_table = df
-
-    
-    @property 
-    def node_names(self): 
-        return self._network.node_names
-
-
-    def read_snp_table(
-        self,
-        file,
-        bp_col='bp',
-        snp_pval_col='pval',
-        snp_chrom_col='hg18chr'
-    ):
-
-        self.snp_cols = {
-            'snp_chrom_col': snp_chrom_col,
-            'bp_col' : bp_col,
-            'snp_pval_col' : snp_pval_col
-        }
-
-        self.snp_level_summary = pd.read_csv(
-            file, header=0, index_col=None, sep='\s+'
-        )
-
-        return self
-
-
-    def read_gene_table(
-        self,
-        file,
-        gene_col='Gene',
-        gene_pval_col='TopSNP P-Value'
-    ):
-
-        self.gene_cols = {
-            'gene_pval_col' : gene_pval_col,
-            'gene_col' : gene_col
-        }
-
-        self.gene_level_summary = pd.read_csv(
-            file, sep='\t', usecols=[1,2,3,4,5,6,7,8,9]
-        )
-
-        return self
-
-
-    def read_protein_coding_table(
-        self,
-        file,
-        pc_chrom_col="Chromosome",
-        start_col="Start",
-        end_col="End"
-    ):
-
-        self.pc_cols = {
-            'pc_chrom_col' : pc_chrom_col,
-            'start_col' : start_col,
-            'end_col' : end_col
-        }
-
-        self.protein_coding_table = pd.read_csv(
-            file, index_col=0, sep='\s+',
-            names=[pc_chrom_col, start_col, end_col]
-        )
-
-        return self
-
-
-    def read_cx_file(self, file, node_name="name"):
-        """Load CX file as network"""
-
-        self._node_name = node_name
-        network = ndex2.create_nice_cx_from_file(file).to_networkx()
-        self.network = network
-
-        return self
-
-
-    def read_nx_pickle_file(self, file, node_name="name"):
-        """Read networkx pickle file as network"""
-
-        self._node_name = node_name
-
-        network = nx.read_gpickle(file)
-        self.network = network
-        self.graphs['full_network'] = network
-
-        return self
-
-
-    def get_network_from_ndex(
-        self,
-        uuid="f93f402c-86d4-11e7-a10d-0ac135e8bacf", #PCNet
-        node_name="name",
-    ):
-
-        self._node_name = node_name
-
-        #anon_ndex = nc.Ndex2("http://public.ndexbio.org")
-        network_niceCx = ndex2.create_nice_cx_from_server(
-            server='public.ndexbio.org',
-            uuid=uuid
-        )
-
-        self.network = network_niceCx.to_networkx()
-
-        return self
-
-
-    def assign_pvalues(self, window_size=0, agg_method='min'):
-        """Wrapper for assign_snps_to_genes"""
-
-        if self.protein_coding_table is None:
-            raise ValueError("protein_coding_table attribute must be provided!")
-
-        if self.snp_level_summary is None:
-            raise ValueError("snp_level_summary attribute must be provided!")
-
-        assigned_pvalues = assign_snps_to_genes(
-            self.snp_level_summary,
-            self.protein_coding_table,
-            window_size=window_size,
-            agg_method=agg_method,
-            to_table=True,
-            snp_chrom_col=self.snp_cols['snp_chrom_col'],
-            bp_col=self.snp_cols['bp_col'],
-            pval_col=self.snp_cols['snp_pval_col'],
-            pc_chrom_col=self.pc_cols['pc_chrom_col'],
-            start_col=self.pc_cols['start_col'],
-            end_col=self.pc_cols['end_col'],
-        )
-
-        if self.gene_level_summary is not None:
-            warnings.warn("The existing gene_level_summary was overwritten!")
-
-        self.gene_level_summary = assigned_pvalues
-
-        return self
-
-
-    @property
-    def pvalues(self):
-        """OrderedDict: `str` to `float`: Dictionary that maps genes to p-values
-
-        Requires gene_level_summary to be set (i.e. Does not run assign_pvalues
-        automatically. For now, pvalues cannot be reassigned.
-        """
-
-        gene_col = self.gene_cols['gene_col']
-        pval_col = self.gene_cols['gene_pval_col']
-
-        if self.gene_level_summary is not None:
-            if not hasattr(self, "_pvalues"):
-                self._pvalues = self.gene_level_summary[
-                    [gene_col, pval_col]
-                ]
-
-                self._pvalues = self._pvalues.set_index(gene_col)
-                self._pvalues = self._pvalues.sort_values(
-                    by=pval_col,
-                    ascending=True
-                )
-
-        else:
-            self._pvalues = None
-
-        return self._pvalues
-
-
-    @pvalues.deleter
-    def pvalues(self):
-        if hasattr(self, "_pvalues"):
-            del self._pvalues
 
 
     @property
@@ -395,7 +108,7 @@ class Nbgwas(object):
         if self._network is None: 
             return None 
 
-        return self._network.network
+        return self._network
 
 
     @network.setter
@@ -417,211 +130,34 @@ class Nbgwas(object):
             self.graphs = {'full_network': network}
 
 
-    @property
-    def node_name(self): 
-        return self._network.node_name
+    def map_to_node_table(self, columns=None): 
+        """Maps information from gene table to network
 
-
-    @property 
-    def adjacency_matrix(self): 
-        if not hasattr(self._network, "adjacency_matrix"): 
-            self.get_adjacency_matrix()
-        
-        return self._network.adjacency_matrix
-
-    
-    def get_adjacency_matrix(self, weights=None): 
-        self._network.add_adjacency_matrix(weights=weights)
-
-        return self._network.adjacency_matrix
-
-    
-    def get_laplacian_matrix(self, weights=None): 
-        self._network.add_laplacian_matrix(weights=weights)
-
-        return self._network.laplacian
-
-
-    def cache_network_data(self):
-        self.get_adjacency_matrix()
-        self.get_laplacian_matrix()
-
-        return self
-
-
-    def convert_node_names(self, attribute="name", to="symbol"): 
-        self._network.convert_node_names(attribute=attribute, to=to)
-
-        return self
-
-
-    def set_node_names(self, attr="name"): 
-        self._network.set_node_names(attr=attr)
-
-        return self
-
-
-    def extract_network_attributes(self, pvalues=None, heat=None, genes="name"):
-        """Build internal dataframes from network attributes"""
-
-        raise NotImplementedError
-
-        df = pd.DataFrame.from_dict(self.network.node, orient="index")
-
-        self.gene_cols = {"gene_col": genes, "gene_pval_col": pvalues}
-        self.gene_level_summary = df.loc[:, [genes, pvalues]]
-
-        if not isinstance(heat, list):
-            heat = [heat]
-
-        self.heat = df.loc[:, heat]
-        self.heat.index = [self.node_2_name[i] for i in self.heat.index]
-
-        return self
-
-
-    def convert_to_heat(
-        self,
-        method='binarize',
-        fill_missing=0,
-        name='Heat',
-        normalize=None,
-        **kwargs
-    ):
-        """Convert p-values to heat
-
-        Parameters
-        ----------
-        method : str
-            Must be in 'binarize' or 'neg_log'
-            "binarize" uses the `binarize` function while "neg_log" uses the
-            `neg_log_val` function. `binarize` places a heat of 1 if the
-            p-value is < threshold otherwise 0. `neg_log` scales the p-value
-            using the following function, $$f(x) = -log(x)$$
-        name : str
-            The column name that will for the self.heat dataframe
-        fill_missing : float
-            A value to give the heat if a node is available in the network,
-            but not in the p-values
-        normalize : float
-            If provided, the total amount of input heat is scaled to the 
-            specified value. Otherwise, no transformation will be done.
-        kwargs
-            Any additional keyword arguments to be passed into the above
-            functions
-
-            For binarize:
-            * threshold : float
-                Default to 5*10^-6.
-
-            For neg_log:
-            * floor : float
-                Default to None. If floor is provided, any converted value
-                below the floor is dropped to 0. If None, no additional
-                transformation is done.
-
-        TODO
-        ----
-        - Implement other methods to convert p-values to heat
+        Parameter
+        ---------
+        columns : str or list of str or None
+            If None, all columns will be added
         """
 
-        allowed = ['binarize', "neg_log"]
-        if method not in allowed:
-            raise ValueError("Method must be in %s" % allowed)
+        if isinstance(columns, str): 
+            columns = [columns] 
+        elif columns is None: 
+            columns = self.genes.table.columns
 
-        vals = self.pvalues.values.ravel()
+        idx = [ind for ind, i in self.genes.table[self.genes.name_col].items() if i in self.network.node_names]
 
-        if method == 'binarize':
-            heat = binarize(vals, threshold=kwargs.get('threshold', 5e-6))
-        elif method == 'neg_log':
-            heat = neg_log_val(vals, floor=kwargs.get('floor', None))
-
-        if normalize is not None: 
-            heat = (heat/heat.sum())*normalize
-
-        heat_map = dict(zip(self.pvalues.index, heat)) 
-
-        heat = pd.DataFrame(
-            [heat_map.get(self._network.node_2_name[i], fill_missing) for i in self._network.node_ids], 
-            index = self._network.node_ids, 
-            columns=[name]
-        )
-        heat.index.name = 'Node IDs'
-
-        if not hasattr(self, "heat"):
-            self.heat = heat
-
-            #Add Names
-            self.heat.loc[:, self.node_name] = [
-                self._network.node_2_name[i] for i in self.heat.index
-            ] 
-
-        else:
-            #name = avoid_overwrite(name, self.heat.columns)
-            self.heat.loc[:, name] = heat
-
-        self.heat.sort_values(name, ascending=False, inplace=True)
+        self.network.set_node_attributes(self.genes.table.loc[idx, columns].to_dict(), namespace='nodeids')
+        self.network.refresh_node_table()
 
         return self
 
-
-    def get_rank(self):
-        """Gets the ranking of each heat and pvalues"""
-
-        def convert_to_rank(series, name):
-            series = series.sort_values(ascending=True if name == "P-values" else False)
-
-            return pd.DataFrame(
-                np.arange(1, len(series) + 1),
-                index=series.index,
-                columns=[name]
-            )
-
-        ranks = []
-        for col in self.heat.columns:
-            ranks.append(convert_to_rank(self.heat[col], col))
-
-        ranks.append(convert_to_rank(self.pvalues[self.gene_cols['gene_pval_col']], "P-values"))
-
-        self.ranks = pd.concat(ranks, axis=1, sort=False)
-
-        return self
-
-
-    def reset_cache(self, mode="results"):
-        """Deletes the intermediate states of the object
-
-        Parameters
-        ----------
-        mode : str
-            Either "results" or "all". If `mode` is `results`, only the heat
-            attribute will be deleted. `convert_2_heat` will need to run again.
-            If `mode` is `all`, any generated intermediates will be deleted.
-        """
-
-        if mode == "results":
-            del self.heat
-
-        elif mode == "all":
-            essentials = ['verbose', 'validate', 'snp_cols', 'gene_cols',
-                'pc_cols', '_snp_level_summary', '_gene_level_summary',
-                '_protein_coding_table', '_network', 'node_names',
-                'node_2_name', 'name_2_node']
-
-            keys_to_delete = []
-            for i in self.__dict__.keys():
-                if i not in essentials:
-                    keys_to_delete.append(i)
-
-            for key in keys_to_delete:
-                del self.__dict__[key]
-
-
+    
     def diffuse(
         self,
         method="random_walk",
-        heat="Heat",
+        node_attribute="Heat",
         result_name="Diffused Heat",
+        update_node_attributes=False,
         **kwargs
     ):
 
@@ -659,28 +195,46 @@ class Nbgwas(object):
             raise RuntimeError("Network was given!")
 
         if method == "random_walk":
-            df = self.random_walk(heat=heat, **kwargs)
+            df = self.random_walk(
+                node_attribute=node_attribute, 
+                result_name=result_name, 
+                **kwargs
+            )
 
         elif method == "random_walk_with_kernel":
-            df = self.random_walk_with_kernel(heat=heat, **kwargs)
+            df = self.random_walk_with_kernel(
+                node_attribute=node_attribute, 
+                result_name=result_name, 
+                **kwargs
+            )
 
         elif method == "heat_diffusion":
-            df = self.heat_diffusion(heat=heat, **kwargs)
+            df = self.heat_diffusion(
+                node_attribute=node_attribute, 
+                result_name=result_name,
+                **kwargs
+            )
 
         else:
             raise RuntimeError("Unexpected method name!")
 
-        #result_name = avoid_overwrite(result_name, self.heat.columns)
-        df.columns = [result_name]
+        self.network.node_table.loc[:, result_name] = df
 
-        self.heat = pd.concat([self.heat, df], axis=1)
-        self.heat.index.name = "Node IDs"
-        self.heat.sort_values(by=result_name, ascending=False, inplace=True)
+        if update_node_attributes: 
+            self.network.refresh_node_attributes()
 
         return self
 
 
-    def random_walk(self, heat='Heat', alpha=0.5, normalize=True, axis=1):
+    def random_walk(
+        self, 
+        node_attribute='Heat', 
+        alpha=0.5, 
+        normalize=True, 
+        axis=1, 
+        result_name="Heat"
+    ):
+
         """Runs random walk iteratively
 
         Parameters
@@ -700,43 +254,18 @@ class Nbgwas(object):
         * Allow for diffusing multiple heat columns
         """
 
-        if not isinstance(heat, list):
-            heat = [heat]
+        if not isinstance(node_attribute, list):
+            heat = [node_attribute]
 
-        if not hasattr(self, "heat"):
-            warnings.warn(
-                "Attribute heat is not found. Generating using the binarize method."
-            )
-
-            self.convert_to_heat()
-
-        if not hasattr(self, "adjacency_matrix"):
-            self.adjacency_matrix = nx.adjacency_matrix(self.network)
-
-        common_indices, pc_ind, heat_ind = get_common_indices(
-            self._network.node_ids,
-            self.heat.index
-        )
-
-        heat_mat = self.heat[heat].values.T
-
-        F0 = heat_mat[:, heat_ind]
-        A = self.adjacency_matrix[:, pc_ind][pc_ind, :]
+        F0 = self.network.node_table[heat].values.T
+        A = self.network.adjacency_matrix
 
         out = random_walk_rst(F0, A, alpha, normalize=normalize, axis=axis)
 
-        df = pd.DataFrame(
-            list(zip(common_indices, np.array(out.todense()).ravel().tolist())),
-            columns=['Genes', 'PROPVALUES']
-        )
-
-        df = df.set_index('Genes').sort_values(by='PROPVALUES', ascending=False)
-        df.index = df.index.astype(int)
-
-        return df
+        return np.array(out.todense()).ravel().tolist()
 
 
-    def random_walk_with_kernel(self, heat="Heat", kernel=None):
+    def random_walk_with_kernel(self, node_attribute="Heat", kernel=None):
         """Runs random walk with pre-computed kernel
 
         This propagation method relies on a pre-computed kernel.
@@ -746,8 +275,8 @@ class Nbgwas(object):
         kernel : str
             Location of the kernel (expects to be in HDF5 format)
         """
-        if not isinstance(heat, list):
-            heat = [heat]
+        if not isinstance(node_attribute, list):
+            heat = [node_attribute]
 
         if isinstance(kernel, str):
             self.kernel = pd.read_hdf(kernel)
@@ -783,7 +312,7 @@ class Nbgwas(object):
         return prop_val_table
 
 
-    def heat_diffusion(self, heat="Heat", t=0.1):
+    def heat_diffusion(self, node_attribute="Heat", t=0.1):
         """Runs heat diffusion without a pre-computed kernel
 
         Parameters
@@ -795,198 +324,39 @@ class Nbgwas(object):
             to diffuse over the network.
         """
 
-        if not isinstance(heat, list):
-            heat = [heat]
-
-        if not hasattr(self, "laplacian"):
-            self.laplacian = csc_matrix(nx.laplacian_matrix(self.network))
-
-        if not hasattr(self, "heat"):
-            warnings.warn(
-                "Attribute heat is not found. Generating using the binarize method."
-            )
-
-            self.convert_to_heat()
+        if not isinstance(node_attribute, list):
+            heat = [node_attribute]
 
         out_vector = heat_diffusion(
-            self.laplacian,
-            self.heat.loc[self._network.node_ids, heat].values.ravel(),
+            self.network.laplacian,
+            self.network.node_table[heat].values.T,
             start=0,
             end=t
         )
 
-        out_dict= {'prop': out_vector,'Gene':self._network.node_ids}
-        heat_df=pd.DataFrame.from_dict(out_dict).set_index('Gene')
+        return out_vector
 
-        return heat_df
+    def get_rank(self):
+        """Gets the ranking of each heat and pvalues"""
 
+        def convert_to_rank(series, name):
+            series = series.sort_values(ascending=True if name == "P-values" else False)
 
-    def annotate_network(self, values="all"):
-        """Return a subgraph with node attributes
-
-        Parameters
-        ----------
-        values : str
-            Name of the column
-        """
-
-        if values=="all":
-            data = self.heat.to_dict()
-            #data.update(self.pvalues.to_dict())
-
-        # elif values == "p-values":
-            # data = self.pvalues.to_dict()
-
-        else:
-            data = self.heat[values].to_dict()
-
-            if isinstance(values, str):
-                data = {values:data}
-
-        self._network.set_node_attributes(data, namespace="nodeids")
-
-        return self
-
-
-    def get_subgraph(self, gene, neighbors=1, name="subgraph"):
-        """Gets a subgraph center on a node
-
-        Parameter
-        ---------
-        gene : str
-            The name of the node (not the ID)
-        neighbors : int
-            The number of
-        """
-
-        center = self._network.name_2_node[gene]
-
-        #this should work for both igraph and networkx
-        nodes = get_neighbors(self.network, neighbors, center)
-
-        self.graphs[name] = self._network.subgraph(node_ids = nodes)
-
-        return self
-
-
-    def view(self,
-        name="subgraph",
-        attributes="Heat",
-        vmin=0,
-        vmax=1,
-        cmap=plt.cm.Blues
-    ):
-        """Plot the subgraph
-
-        Parameters
-        ----------
-        name : str
-            The key in self.graphs that contains the graph
-        attributes : str
-            The node attributes on the network (in self.graphs) to be
-            visualized. Note that this means, `annotate_network` should
-            be used first to add the node attributes
-        vmin : float
-            The lower end of the colorbar
-        vmax : float
-            The upper end of the colorbar
-        cmap :
-            Matplotlib colormap object
-        """
-
-        try:
-            G = self.graphs[name]
-        except KeyError:
-            raise KeyError("%s is not in the self.graphs dictionary!" % name)
-
-        fig, ax = plt.subplots()
-
-        attr = nx.get_node_attributes(G, attributes)
-
-        #TODO: replace missing except behavior with default fall back value
-        try:
-            vals = [attr[i] for i in G.nodes()]
-        except KeyError:
-            warnings.warn(
-                "The specified graph does not have the attribute %s. Replacing values with 0." % name
+            return pd.DataFrame(
+                np.arange(1, len(series) + 1),
+                index=series.index,
+                columns=[name]
             )
-            vals = [0 for _ in G.nodes()]
 
-        nx.draw(
-            self.graphs[name],
-            ax=ax,
-            node_color=vals,
-            labels=nx.get_node_attributes(G, self.node_name),
-            vmin=vmin,
-            vmax=vmax,
-            cmap=cmap
-        )
+        ranks = []
+        for col in self.heat.columns:
+            ranks.append(convert_to_rank(self.heat[col], col))
 
-        sm = plt.cm.ScalarMappable(cmap=plt.cm.Blues,
-            norm=mpl.colors.Normalize(vmin=vmin, vmax=vmax)
-        )
+        ranks.append(convert_to_rank(self.pvalues[self.gene_cols['gene_pval_col']], "P-values"))
 
-        sm._A = []
-        plt.colorbar(sm)
-
-        return fig, ax
-
-
-    def view_in_cytoscape(self, name="subgraph"):
-        """Ports subgraph to Cytoscape"""
-
-        if not hasattr(self, "cyrest"):
-            self.cyrest = CyRestClient()
-
-        if self._network_lib == "networkx": 
-            hdl = self.cyrest.network.create_from_networkx(self.graphs[name])
-
-        else: 
-            raise RuntimeError("Only networkx objects are supported for viewing in cytoscape")
-        
-        self.cyrest.layout.apply(name='degree-circle', network=hdl)
+        self.ranks = pd.concat(ranks, axis=1, sort=False)
 
         return self
-
-
-    def to_ndex(
-        self,
-        name="subgraph",
-        server="http://test.ndexbio.org",
-        username="scratch2",
-        password="scratch2"
-    ):
-
-        """Uploads graph to NDEx
-
-        Parameters
-        ----------
-        name : str
-            The key in self.graphs that contains the graph
-        server: str
-            The NDEx server hyperlink
-        username : str
-            Username of the NDEx account
-        password : str
-            Password of the NDEx account
-        """
-
-        if self._network_lib != "networkx": 
-            raise RuntimeError("Only networkx objects are supported for upload to NDEx.")
-
-        try:
-            g = ndex2.create_nice_cx_from_networkx(self.graphs[name])
-        except KeyError:
-            raise KeyError("%s is not in self.graphs dictionary!" % name)
-
-        uuid = g.upload_to(
-            server=server,
-            username=username,
-            password=password
-        )
-
-        return uuid
-
 
     def hypergeom(self, gold, top=100, ngenes=20000, rank_col=None):
         """Run hypergemoetric test
@@ -1005,7 +375,7 @@ class Nbgwas(object):
         """
 
         if rank_col is None:
-            genes = self.pvalues.sort_values(by=self.gene_cols['gene_pval_col'])
+            genes = self.genes.pvalues.sort_values(by=self.gene_cols['gene_pval_col'])
             genes = genes.iloc[:top].index
 
         else:

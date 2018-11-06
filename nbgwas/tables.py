@@ -32,7 +32,15 @@ class Genes(object):
 
 
     @classmethod
-    def from_file(cls, path, pval_col='TopSNP P-Value', name_col='Gene', use_index=False, **kwargs):
+    def from_file(
+        cls, 
+        path, 
+        pval_col='TopSNP P-Value', 
+        name_col='Gene', 
+        use_index=False, 
+        **kwargs
+    ):
+    
         table = pd.read_csv(path, **kwargs)
 
         return cls(
