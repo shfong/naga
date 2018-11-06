@@ -448,6 +448,7 @@ class Nbgwas(object):
 
         return self
 
+
     def convert_node_names(self, attribute="name", to="symbol"): 
         self._network.convert_node_names(attribute=attribute, to=to)
 
@@ -1021,6 +1022,7 @@ class Nbgwas(object):
         )
 
         return Hypergeom(pvalue, score, intersect)
+
 
     def check_significance(self, gold, top=100, threshold=0.05, rank_col=None):
         """Check if the top N genes are significant

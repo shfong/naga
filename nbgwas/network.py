@@ -7,34 +7,9 @@ import mygene
 
 def igraph_adj_matrix(G, weighted=False): 
 
-    length = len(G.es)*2
-
-    row_index, col_index = np.empty(length), np.empty(length)
-
-    # count = 0
-    # for ind, e in enumerate(G.get_adjlist(mode="OUT")): 
-    #     n = len(e)
-    #     row_index[count:count + n] = ind 
-    #     col_index[count:count + n] = e
-
-    #     count += n
-
-    # if weighted:
-    #     if weighted not in G.es.attributes(): 
-    #         raise ValueError("weighted argument not in graph edge attributes!")
-
-    #     vals = [G.es[(i,j)] for i,j in zip(row_index, col_index)]
-
-    # else: 
-    #     vals = np.ones(length)
-
     source, target, weights = zip(*[(i.source, i.target, i[weighted] if weighted else 1) for i in G.es])
 
     n_nodes = len(G.vs)
-
-    #print(len(vals), len(row_index), len(col_index))
-
-    #adj = coo_matrix((vals, (row_index, col_index)), shape=(n_nodes, n_nodes))
     adj = csr_matrix(coo_matrix((weights, (source, target)), shape=(n_nodes, n_nodes)))
 
     if not G.is_directed(): 
