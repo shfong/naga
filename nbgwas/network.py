@@ -1,8 +1,10 @@
 from abc import ABC, abstractmethod
 import networkx as nx
+import ndex2
 import numpy as np
 import igraph as ig
 from scipy.sparse import diags, coo_matrix, csr_matrix
+import pandas as pd
 import mygene
 
 def igraph_adj_matrix(G, weighted=False): 
@@ -114,6 +116,10 @@ class Network(ABC):
         else: 
             return values
 
+    @property
+    def node_table(self): 
+        return pd.DataFrame.from_dict(self.get_node_attributes()).T
+
 
 class NxNetwork(Network): 
     """Internal object to expose networkx functionalities"""
@@ -127,9 +133,11 @@ class NxNetwork(Network):
         else: 
             self.node_names = None
 
+
     @property 
     def node_ids(self): 
         return self.network.nodes()
+
 
     def set_node_names(self, attr=None): 
         if attr is None: 
@@ -149,6 +157,7 @@ class NxNetwork(Network):
 
         return self
 
+
     def add_adjacency_matrix(self, weights=None): 
         self.adjacency_matrix = nx.adjacency_matrix(
             self.network, weight=weights
@@ -156,10 +165,12 @@ class NxNetwork(Network):
 
         return self
 
+
     def add_laplacian_matrix(self, weights=None): 
         self.laplacian = nx.laplacian_matrix(self.network, weight=weights)
 
         return self  
+
 
     def subgraph(self, node_ids=None, node_names=None): 
         if node_names is not None and node_ids is not None: 
@@ -170,8 +181,10 @@ class NxNetwork(Network):
 
         return self.network.subgraph(node_ids)
 
+
     def get_node_attributes(self): 
         return self.network.node
+
 
     def set_node_attributes(self, attr_map, namespace="nodenames"):
         for attr_name, d in attr_map.items():  
@@ -185,6 +198,41 @@ class NxNetwork(Network):
             )
 
         return self
+
+
+    @classmethod
+    def from_cx(cls, file, node_name="name"):
+        """Load CX file as network"""
+
+        network = ndex2.create_nice_cx_from_file(file).to_networkx()
+
+        return cls(network, node_name=node_name)        
+
+
+    @classmethod
+    def from_pickle(cls, file, node_name="name"):
+        """Read networkx pickle file as network"""
+
+        network = nx.read_gpickle(file)
+
+        return cls(network, node_name=node_name)
+
+
+    @classmethod
+    def from_ndex(
+        cls,
+        uuid="f93f402c-86d4-11e7-a10d-0ac135e8bacf", #PCNet
+        node_name="name",
+    ):
+
+        network_niceCx = ndex2.create_nice_cx_from_server(
+            server='public.ndexbio.org',
+            uuid=uuid
+        )
+
+        network = network_niceCx.to_networkx()
+
+        return cls(network, node_name=node_name)
 
 
 class IgNetwork(Network): 

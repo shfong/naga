@@ -197,6 +197,11 @@ class Snps(object):
         pass
 
 
+    @property 
+    def pvalues(self): 
+        return self.snp_table[self.pval_col].values.ravel()
+
+
     def assign_snps_to_genes(
         self,
         window_size=0,
