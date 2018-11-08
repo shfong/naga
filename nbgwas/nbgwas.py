@@ -205,28 +205,32 @@ class Nbgwas(object):
         if method == "random_walk":
             df = self.random_walk(
                 node_attribute=node_attribute, 
-                result_name=result_name, 
                 **kwargs
             )
 
         elif method == "random_walk_with_kernel":
             df = self.random_walk_with_kernel(
                 node_attribute=node_attribute, 
-                result_name=result_name, 
                 **kwargs
             )
 
         elif method == "heat_diffusion":
             df = self.heat_diffusion(
                 node_attribute=node_attribute, 
-                result_name=result_name,
                 **kwargs
             )
 
         else:
             raise RuntimeError("Unexpected method name!")
 
-        self.network.node_table.loc[:, result_name] = df
+        sorted_idx = self.network.node_table.index.sort_values()
+
+        self.network.node_table.loc[sorted_idx, result_name] = df
+        self.network.node_table.sort_values(
+            by=result_name, 
+            ascending=False, 
+            inplace=True
+        )
 
         if update_node_attributes: 
             self.network.refresh_node_attributes()
@@ -240,7 +244,6 @@ class Nbgwas(object):
         alpha=0.5, 
         normalize=True, 
         axis=1, 
-        result_name="Heat"
     ):
 
         """Runs random walk iteratively
@@ -263,7 +266,7 @@ class Nbgwas(object):
         """
 
         if not isinstance(node_attribute, list):
-            heat = [node_attribute]
+            node_attribute = [node_attribute]
 
         sorted_idx = self.network.node_table.index.sort_values()
         F0 = self.network.node_table.loc[sorted_idx, node_attribute].values.T
@@ -334,13 +337,13 @@ class Nbgwas(object):
         """
 
         if not isinstance(node_attribute, list):
-            heat = [node_attribute]
+            node_attribute = [node_attribute]
 
         sorted_idx = self.network.node_table.index.sort_values()
 
         out_vector = heat_diffusion(
-            self.network.laplacian,
-            self.network.node_table.loc[sorted_idx, node_attribute].values.T,
+            self.network.laplacian_matrix,
+            self.network.node_table.loc[sorted_idx, node_attribute].values.ravel(),
             start=0,
             end=t
         )
