@@ -1,6 +1,4 @@
-"""Tables 
-
-"""
+"""Tables needed for Nbgwas"""
 
 from collections import defaultdict
 import numpy as np

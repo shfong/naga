@@ -10,6 +10,7 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 from py2cytoscape.data.cyrest_client import CyRestClient
 import warnings
+from .utils import get_neighbors
 
 def igraph_adj_matrix(G, weighted=False): 
 
@@ -416,6 +417,19 @@ class NxNetwork(Network):
         self.cyrest.layout.apply(name='degree-circle', network=hdl)
 
         return self
+
+
+    def local_neighborhood(self, center_name=None, center_id=None, neighbors=1): 
+        if center_name is not None and center_id is not None: 
+            raise ValueError("Either center_name or center_id can be supplied.")
+
+        if center_name is not None: 
+            center_id = self.name_2_node[center_name] 
+
+
+        nodes = get_neighbors(self.network, neighbors, center_id) 
+
+        return self.subgraph(node_ids = nodes)
 
 
 class IgNetwork(Network): 
