@@ -204,14 +204,14 @@ class NxNetwork(Network):
     @property
     def adjacency_matrix(self): 
         if not hasattr(self, "_adjacency_matrix"): 
-            self.add_adjacency_matrix
+            self.add_adjacency_matrix()
 
         return self._adjacency_matrix
 
     @property
     def laplacian_matrix(self): 
         if not hasattr(self, "_laplacian_matrix"): 
-            self.add_laplacian_matrix
+            self.add_laplacian_matrix()
 
         return self._laplacian_matrix
 
@@ -225,7 +225,7 @@ class NxNetwork(Network):
 
 
     def add_laplacian_matrix(self, weights=None): 
-        self._laplacian = nx.laplacian_matrix(self.network, weight=weights)
+        self._laplacian_matrix = nx.laplacian_matrix(self.network, weight=weights)
 
         return self  
 
@@ -235,9 +235,12 @@ class NxNetwork(Network):
             raise ValueError("Expected either node_names or node_ids. Both given.")
 
         elif node_names is not None: 
-            node_ids = [self.node_2_name[n] for n in node_names]
+            node_ids = [self.name_2_node[n] for n in node_names]
 
-        return self.network.subgraph(node_ids)
+        return NxNetwork(
+            network=self.network.subgraph(node_ids), 
+            node_name=self.node_name
+        )
 
 
     def get_node_attributes(self): 
@@ -258,30 +261,41 @@ class NxNetwork(Network):
         return self
 
 
-    @classmethod
-    def from_cx(cls, file, node_name="name"):
+    def from_cx(self, file, node_name="name"):
         """Load CX file as network"""
+
+        del self.__dict__
 
         network = ndex2.create_nice_cx_from_file(file).to_networkx()
 
-        return cls(network, node_name=node_name)        
+        self.__init__(
+            network=network, 
+            node_name=node_name
+        )
+        
+        return self
 
 
-    @classmethod
-    def from_pickle(cls, file, node_name="name"):
+    def from_pickle(self, file, node_name="name"):
         """Read networkx pickle file as network"""
 
-        network = nx.read_gpickle(file)
+        del self.__dict__
+        
+        self.__init__(
+            network = nx.read_gpickle(file),
+            node_name = node_name,
+        )
 
-        return cls(network, node_name=node_name)
+        return self
 
 
-    @classmethod
     def from_ndex(
-        cls,
+        self,
         uuid="f93f402c-86d4-11e7-a10d-0ac135e8bacf", #PCNet
         node_name="name",
     ):
+
+        del self.__dict__
 
         network_niceCx = ndex2.create_nice_cx_from_server(
             server='public.ndexbio.org',
@@ -290,7 +304,13 @@ class NxNetwork(Network):
 
         network = network_niceCx.to_networkx()
 
-        return cls(network, node_name=node_name)
+        self.__init__(
+            network=network, 
+            node_name=node_name
+        )
+
+        return self
+
 
     def to_ndex(
         self,
@@ -359,18 +379,18 @@ class NxNetwork(Network):
 
         #TODO: replace missing except behavior with default fall back value
         try:
-            vals = [attr[i] for i in G.nodes()]
+            vals = [attr[i] for i in self.network.nodes()]
         except KeyError:
             warnings.warn(
-                "The specified graph does not have the attribute %s. Replacing values with 0." % name
+                "The specified graph does not have the attribute %s. Replacing values with 0." % attributes
             )
-            vals = [0 for _ in G.nodes()]
+            vals = [0 for _ in self.network.nodes()]
 
         nx.draw(
             self.network,
             ax=ax,
             node_color=vals,
-            labels=self.node_names,
+            labels=self.node_2_name,
             vmin=vmin,
             vmax=vmax,
             cmap=cmap
@@ -387,17 +407,12 @@ class NxNetwork(Network):
 
 
     def view_in_cytoscape(self, name="subgraph"):
-        """Ports subgraph to Cytoscape"""
+        """Ports graph to Cytoscape"""
 
         if not hasattr(self, "cyrest"):
             self.cyrest = CyRestClient()
 
-        if self._network_lib == "networkx": 
-            hdl = self.cyrest.network.create_from_networkx(self.graphs[name])
-
-        else: 
-            raise RuntimeError("Only networkx objects are supported for viewing in cytoscape")
-        
+        hdl = self.cyrest.network.create_from_networkx(self.graphs[name])
         self.cyrest.layout.apply(name='degree-circle', network=hdl)
 
         return self

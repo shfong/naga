@@ -144,9 +144,17 @@ class Nbgwas(object):
         elif columns is None: 
             columns = self.genes.table.columns
 
-        idx = [ind for ind, i in self.genes.table[self.genes.name_col].items() if i in self.network.node_names]
+        idx, gs = [], []
 
-        self.network.set_node_attributes(self.genes.table.loc[idx, columns].to_dict(), namespace='nodeids')
+        for ind, gene in self.genes.table[self.genes.name_col].items(): 
+            if gene in self.network.node_names: 
+                idx.append(ind)
+                gs.append(gene)
+
+        tmp = self.genes.table.loc[idx, columns]
+        tmp.index = gs
+
+        self.network.set_node_attributes(tmp.to_dict(), namespace='nodenames')
         self.network.refresh_node_table()
 
         return self
@@ -257,7 +265,8 @@ class Nbgwas(object):
         if not isinstance(node_attribute, list):
             heat = [node_attribute]
 
-        F0 = self.network.node_table[heat].values.T
+        sorted_idx = self.network.node_table.index.sort_values()
+        F0 = self.network.node_table.loc[sorted_idx, node_attribute].values.T
         A = self.network.adjacency_matrix
 
         out = random_walk_rst(F0, A, alpha, normalize=normalize, axis=axis)
@@ -327,9 +336,11 @@ class Nbgwas(object):
         if not isinstance(node_attribute, list):
             heat = [node_attribute]
 
+        sorted_idx = self.network.node_table.index.sort_values()
+
         out_vector = heat_diffusion(
             self.network.laplacian,
-            self.network.node_table[heat].values.T,
+            self.network.node_table.loc[sorted_idx, node_attribute].values.T,
             start=0,
             end=t
         )

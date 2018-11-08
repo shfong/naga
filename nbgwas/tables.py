@@ -31,24 +31,21 @@ class Genes(object):
         self._validate()
 
 
-    @classmethod
     def from_file(
-        cls, 
+        self, 
         path, 
         pval_col='TopSNP P-Value', 
         name_col='Gene', 
         use_index=False, 
         **kwargs
     ):
-    
-        table = pd.read_csv(path, **kwargs)
 
-        return cls(
-            table, 
-            pval_col=pval_col, 
-            name_col=name_col, 
-            use_index = use_index
-        )
+        self.table = pd.read_csv(path, **kwargs)
+        self.pval_col = pval_col 
+        self.name_col = name_col 
+        self.use_index = use_index
+
+        return self        
 
 
     def _validate(self): 
@@ -170,7 +167,7 @@ class Snps(object):
 
         self._validate()
         
-    @classmethod 
+
     def from_files(
         cls, 
         snp_file, 
@@ -187,16 +184,16 @@ class Snps(object):
         snp_table = pd.read_csv(snp_file, **snp_kwargs)
         protein_coding_table = pd.read_csv(protein_coding_file, **pc_kwargs) 
 
-        return cls(
-            snp_table, 
-            protein_coding_table, 
-            snp_chrom_col = snp_chrom_col, 
-            snp_bp_col = snp_bp_col, 
-            pval_col = pval_col, 
-            pc_chrom_col = pc_chrom_col, 
-            start_col = start_col, 
-            end_col = end_col
-        )
+        self.snp_table = snp_table
+        self.protein_coding_table = protein_coding_table
+        self.snp_chrom_col = snp_chrom_col
+        self.snp_bp_col = snp_bp_col
+        self.pval_col = pval_col
+        self.pc_chrom_col = pc_chrom_col
+        self.start_col = start_col
+        self.end_col = end_col
+
+        return self
 
 
     def _validate(self): 
