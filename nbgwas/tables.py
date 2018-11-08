@@ -5,6 +5,7 @@
 from collections import defaultdict
 import numpy as np
 import pandas as pd
+from scklearn import LinearRegression
 from .utils import get_neighbors, binarize, neg_log_val
 
 class Genes(object): 
@@ -126,6 +127,49 @@ class Genes(object):
         self.table.sort_values(name, ascending=False, inplace=True)
 
         return self
+
+    def normalize_by_gene_length(
+        self, 
+        column, 
+        out_name="Normalized", 
+        gene_lengths=None, 
+        gene_length_col=None
+    ):
+
+        """Normalize a column by the gene length
+        
+        Parameters
+        ----------
+        column : str 
+            Column name in self.table 
+        out_name : str
+            Column name of the result to be added to self.table
+        gene_lengths : list
+            List of gene lengths corresponding to each row of the table
+        gene_length_col : str
+            Column name of that corresponds to gene_length         
+        """
+
+        if gene_lengths is not None and gene_length_col is not None: 
+            raise ValueError("Only either gene_lengths or gene_length_col can be supplied.")
+
+        if gene_length_col is not None: 
+            gene_size = self.table[gene_length_col].values
+        else: 
+            gene_size = np.array(gene_lengths).ravel()
+
+        init_heat = self.table[column].values
+
+        regression_model = LinearRegression()
+        regression_model.fit(gene_size, init_heat)
+
+        y_pred = regression_model.predict(gene_size)
+        residual = init_heat - y_pred
+        y_adjusted = residual + np.abs(residual.min())
+        
+        self.table[out_name] = y_adjusted 
+
+        return self        
 
 
 class Snps(object): 
