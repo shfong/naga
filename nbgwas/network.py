@@ -413,7 +413,7 @@ class NxNetwork(Network):
         if not hasattr(self, "cyrest"):
             self.cyrest = CyRestClient()
 
-        hdl = self.cyrest.network.create_from_networkx(self.graphs[name])
+        hdl = self.cyrest.network.create_from_networkx(self.network)
         self.cyrest.layout.apply(name='degree-circle', network=hdl)
 
         return self

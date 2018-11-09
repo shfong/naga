@@ -3,7 +3,7 @@
 from collections import defaultdict
 import numpy as np
 import pandas as pd
-from scklearn import LinearRegression
+from sklearn.linear_model import LinearRegression
 from .utils import get_neighbors, binarize, neg_log_val
 
 class Genes(object): 
@@ -211,7 +211,7 @@ class Snps(object):
         
 
     def from_files(
-        cls, 
+        self, 
         snp_file, 
         protein_coding_file, 
         snp_chrom_col='hg18chr', 

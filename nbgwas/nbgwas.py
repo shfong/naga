@@ -160,6 +160,27 @@ class Nbgwas(object):
         return self
 
     
+    def map_to_gene_table(self, columns, fill_value=0): 
+        """Maps columns from node_table to gene table"""
+
+        df = self.network.node_table.copy()
+        df = df.set_index(self.network.node_name)
+        df = df[columns]
+
+        gtable = self.genes.table.copy()
+        gtable.set_index('Gene') 
+
+        ind = gtable.index
+
+        self.genes.table = pd.concat(
+            [gtable, df.reindex(ind, fill_value=fill_value)],
+            axis=1, 
+            sort=False,
+        )
+
+        return self
+
+
     def diffuse(
         self,
         method="random_walk",
@@ -287,41 +308,46 @@ class Nbgwas(object):
         kernel : str
             Location of the kernel (expects to be in HDF5 format)
         """
-        if not isinstance(node_attribute, list):
-            heat = [node_attribute]
 
-        if isinstance(kernel, str):
-            self.kernel = pd.read_hdf(kernel)
+        raise NotImplementedError
 
-        elif isinstance(kernel, pd.DataFrame):
-            self.kernel = kernel
+        #TODO: Fix this 
 
-        else:
-            raise ValueError("A kernel must be provided!")
+        # if not isinstance(node_attribute, list):
+        #     heat = [node_attribute]
+
+        # if isinstance(kernel, str):
+        #     self.kernel = pd.read_hdf(kernel)
+
+        # elif isinstance(kernel, pd.DataFrame):
+        #     self.kernel = kernel
+
+        # else:
+        #     raise ValueError("A kernel must be provided!")
 
 
-        if not hasattr(self, "heat"):
-            warnings.warn(
-                "Attribute heat is not found. Generating using the binarize method."
-            )
+        # # if not hasattr(self, "heat"):
+        # #     warnings.warn(
+        # #         "Attribute heat is not found. Generating using the binarize method."
+        # #     )
 
-            self.convert_to_heat()
+        # #     self.convert_to_heat()
 
-        network_genes = list(self.kernel.index)
+        # network_genes = list(self.kernel.index)
 
-        # Not saving heat to object because the kernel index may not
-        # match network's
-        heat = self.heat[heat].reindex(network_genes).fillna(0)
+        # # Not saving heat to object because the kernel index may not
+        # # match network's
+        # heat = self.heat[heat].reindex(network_genes).fillna(0)
 
-        # Propagate with pre-computed kernel
-        prop_val_matrix = np.dot(heat.values.T, self.kernel)
-        prop_val_table = pd.DataFrame(
-            prop_val_matrix,
-            index = heat.columns,
-            columns = heat.index
-        ).T
+        # # Propagate with pre-computed kernel
+        # prop_val_matrix = np.dot(heat.values.T, self.kernel)
+        # prop_val_table = pd.DataFrame(
+        #     prop_val_matrix,
+        #     index = heat.columns,
+        #     columns = heat.index
+        # ).T
 
-        return prop_val_table
+        # return prop_val_table
 
 
     def heat_diffusion(self, node_attribute="Heat", t=0.1):
@@ -350,29 +376,36 @@ class Nbgwas(object):
 
         return out_vector
 
-    def get_rank(self):
-        """Gets the ranking of each heat and pvalues"""
+    # def get_rank(self):
+    #     """Gets the ranking of each heat and pvalues"""
 
-        def convert_to_rank(series, name):
-            series = series.sort_values(ascending=True if name == "P-values" else False)
+    #     def convert_to_rank(series, name):
+    #         series = series.sort_values(ascending=True if name == "P-values" else False)
 
-            return pd.DataFrame(
-                np.arange(1, len(series) + 1),
-                index=series.index,
-                columns=[name]
-            )
+    #         return pd.DataFrame(
+    #             np.arange(1, len(series) + 1),
+    #             index=series.index,
+    #             columns=[name]
+    #         )
 
-        ranks = []
-        for col in self.heat.columns:
-            ranks.append(convert_to_rank(self.heat[col], col))
+    #     ranks = []
+    #     for col in self.heat.columns:
+    #         ranks.append(convert_to_rank(self.heat[col], col))
 
-        ranks.append(convert_to_rank(self.pvalues[self.gene_cols['gene_pval_col']], "P-values"))
+    #     ranks.append(convert_to_rank(self.pvalues[self.gene_cols['gene_pval_col']], "P-values"))
 
-        self.ranks = pd.concat(ranks, axis=1, sort=False)
+    #     self.ranks = pd.concat(ranks, axis=1, sort=False)
 
-        return self
+    #     return self
 
-    def hypergeom(self, gold, top=100, ngenes=20000, rank_col=None):
+    def hypergeom(
+        self, 
+        gold, 
+        column,
+        top=100, 
+        ngenes=20000,
+        ascending=False
+    ):
         """Run hypergemoetric test
 
         Parameters
@@ -388,13 +421,9 @@ class Nbgwas(object):
             If the rank_col is None, the p-value is used.
         """
 
-        if rank_col is None:
-            genes = self.genes.pvalues.sort_values(by=self.gene_cols['gene_pval_col'])
-            genes = genes.iloc[:top].index
-
-        else:
-            genes = self.heat.sort_values(by=rank_col, ascending=False)
-            genes = genes.iloc[:top][self.node_name]
+        sorted_genes = self.genes.table.sort_values(by=column, ascending=ascending)
+        sorted_genes = sorted_genes[self.genes.name_col].values
+        genes = sorted_genes[:top]
 
         intersect = set(genes).intersection(set(gold))
         score = len(intersect)
@@ -408,7 +437,14 @@ class Nbgwas(object):
         return Hypergeom(pvalue, score, intersect)
 
 
-    def check_significance(self, gold, top=100, threshold=0.05, rank_col=None):
+    def check_significance(
+        self, 
+        gold, 
+        column,
+        top=100, 
+        threshold=0.05,
+        ascending=False
+    ):
         """Check if the top N genes are significant
 
         Parameters
@@ -425,12 +461,8 @@ class Nbgwas(object):
             If the rank_col is None, the p-value is used.
         """
 
-        if rank_col is None:
-            genes = self.pvalues.sort_values(by=self.gene_cols['gene_pval_col'])
-            genes = genes.iloc[:top].index
-
-        else:
-            genes = self.heat.sort_values(by=rank_col, ascending=False)
-            genes = genes.iloc[:top][self.node_name]
+        sorted_genes = self.genes.table.sort_values(by=column, ascending=ascending)
+        sorted_genes = sorted_genes[self.genes.name_col].values
+        genes = sorted_genes[:top]
 
         return sum([gold.get(i, 1) < threshold for i in genes])
