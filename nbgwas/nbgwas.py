@@ -10,7 +10,7 @@ import time
 import warnings
 
 from .assign_snps_to_genes import assign_snps_to_genes
-from .network import NxNetwork, IgNetwork
+from .network import Network, NxNetwork, IgNetwork
 from .tables import Genes, Snps
 from .propagation import random_walk_rst, get_common_indices, heat_diffusion
 from .utils import get_neighbors, binarize, neg_log_val
@@ -122,6 +122,9 @@ class Nbgwas(object):
         elif isinstance(network, ig.Graph): 
             self._network = IgNetwork(network, node_name=self._node_name)
 
+        elif isinstance(network, Network): 
+            self.network = network
+        
         else: 
             raise ValueError("Graph type is not understood. Must be a networkx object or an igraph object")
 
@@ -130,7 +133,7 @@ class Nbgwas(object):
             self.graphs = {'full_network': network}
 
 
-    def map_to_node_table(self, columns=None): 
+    def map_to_node_table(self, columns=None, update_node_attributes=False): 
         """Maps information from gene table to network
 
         Parameter
@@ -154,8 +157,9 @@ class Nbgwas(object):
         tmp = self.genes.table.loc[idx, columns]
         tmp.index = gs
 
-        self.network.set_node_attributes(tmp.to_dict(), namespace='nodenames')
-        self.network.refresh_node_table()
+        if update_node_attributes: 
+            self.network.set_node_attributes(tmp.to_dict(), namespace='nodenames')
+            self.network.refresh_node_table()
 
         return self
 
@@ -168,7 +172,7 @@ class Nbgwas(object):
         df = df[columns]
 
         gtable = self.genes.table.copy()
-        gtable.set_index('Gene') 
+        gtable = gtable.set_index(self.genes.name_col) 
 
         ind = gtable.index
 
@@ -176,7 +180,7 @@ class Nbgwas(object):
             [gtable, df.reindex(ind, fill_value=fill_value)],
             axis=1, 
             sort=False,
-        )
+        ).reset_index()
 
         return self
 

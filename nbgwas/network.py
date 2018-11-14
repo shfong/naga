@@ -108,12 +108,23 @@ class Network(ABC):
 
         attr = [v[attribute] for k,v in node_attributes.items()]
 
-        gene_map = mg.querymany(
+        query_result = mg.querymany(
             attr, 
             scopes=current, 
             field=to,
-            as_dataframe=True 
-        )[to].to_dict() 
+            as_dataframe=True, 
+            returnall=True, 
+        #)[to].to_dict() 
+        )
+
+        gene_map = query_result['out'][to].to_dict()
+
+        missing_map = {}
+        if query_result['missing']: 
+            warnings.warn('Some nodes cannot be converted. Their original name will be kept!')
+
+            for i in query_result['missing']: 
+                gene_map[i] = i
 
         change_to = {
             to: {
@@ -407,7 +418,7 @@ class NxNetwork(Network):
         return fig, ax
 
 
-    def view_in_cytoscape(self, name="subgraph"):
+    def view_in_cytoscape(self):
         """Ports graph to Cytoscape"""
 
         if not hasattr(self, "cyrest"):
@@ -520,10 +531,12 @@ class IgNetwork(Network):
             attr = [None]*len(self.network.vs)
             for ind, v in enumerate(self.network.vs): 
                 if namespace == "nodenames": 
-                    attr[ind] = d[v[self.node_name]]
+                    if v[self.node_name] in d: 
+                        attr[ind] = d[v[self.node_name]]
 
                 elif namespace == "nodeids": 
-                    attr[ind] = d[v.index] 
+                    if v.index in d: 
+                        attr[ind] = d[v.index] 
 
                 else: 
                     raise ValueError("namespace must be nodenames or nodeids")
