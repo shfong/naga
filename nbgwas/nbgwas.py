@@ -133,6 +133,22 @@ class Nbgwas(object):
             self.graphs = {'full_network': network}
 
 
+    def map_snps_to_genes(
+        self, 
+        window_size=0,
+        agg_method='min',
+    ): 
+        g = self.snps.assign_snps_to_genes(
+            window_size=window_size, 
+            agg_method=agg_method, 
+            to_Gene=True
+        )
+
+        self.genes = g
+
+        return self
+
+
     def map_to_node_table(self, columns=None, update_node_attributes=False): 
         """Maps information from gene table to network
 

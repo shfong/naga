@@ -7,7 +7,13 @@ from sklearn.linear_model import LinearRegression
 from .utils import get_neighbors, binarize, neg_log_val
 
 class Genes(object): 
-    def __init__(self, table, pval_col='TopSNP P-Value', name_col='Gene', use_index=False): 
+    def __init__(
+        self, 
+        table, 
+        pval_col='TopSNP P-Value', 
+        name_col='Gene', 
+        use_index=False
+    ): 
         """Stores the gene information
 
         Parameters
@@ -254,7 +260,7 @@ class Snps(object):
         window_size=0,
         agg_method='min',
         to_table=False,
-        to_Gene=False,
+        to_Gene=True,
     ):
 
         """Assigns SNP to genes
@@ -335,7 +341,12 @@ class Snps(object):
             if pc_i.shape[0] == 0:
                 raise RuntimeError("No proteins found for this chromosome!")
 
-            bins, names = _get_bins(pc_i, window_size=window_size)
+            bins, names = _get_bins(
+                pc_i, 
+                window_size=window_size, 
+                cols=[self.start_col, self.end_col]
+            )
+
             bps = df[self.snp_bp_col].values
             binned = np.digitize(bps, bins)
 
@@ -380,8 +391,8 @@ class Snps(object):
 
             gene_lengths = []
             for val, df in self.protein_coding_table.groupby(self.protein_coding_table.index): 
-                tmp = df[['Start', 'End']].astype(str).values
-                gene_lengths.append((val, df['Chrom'].values[0], ','.join(['-'.join(i) for i in tmp.tolist()])))
+                tmp = df[[self.start_col, self.end_col]].astype(str).values
+                gene_lengths.append((val, df[self.pc_chrom_col].values[0], ','.join(['-'.join(i) for i in tmp.tolist()])))
                 
             gene_lengths_df = pd.DataFrame(gene_lengths, columns=['Gene', 'Chrom', 'Start-End'])
             gene_lengths_df = gene_lengths_df.set_index('Gene')
@@ -411,10 +422,19 @@ def _get_bins(df, window_size=0, cols=[1,2]):
     Note that each bin can have multiple names due to overlapping start
     and end sites. If the name is empty, then that bin is not occupied by
     a gene.
+
+    If cols contain strings, the dataframe is indexed by column names. 
+    Otherwise, the dataframe will be extracted by column number.
     """
     names = df.index.values
 
-    arr = df.iloc[:, cols].values.astype(int)
+    if isinstance(cols[0], str): 
+        arr = df.loc[:, cols]
+    
+    else: 
+        arr = df.iloc[:, cols] 
+
+    arr = arr.values.astype(int)
 
     arr[:, 0] -= window_size
     arr[:, 1] += window_size
