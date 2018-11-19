@@ -8,6 +8,7 @@ import pandas as pd
 import mygene
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+import pickle
 from py2cytoscape.data.cyrest_client import CyRestClient
 import warnings
 from .utils import get_neighbors
@@ -94,14 +95,18 @@ class Network(ABC):
     # def node_names(self): 
     #     pass
 
-    #TODO: add gene name conversion function
     def convert_node_names(
         self, 
         attribute="name", 
         current="entrezgene", 
         to="symbol", 
-        use_key_for_missing=False
+        rerun_query=True,
+        use_key_for_missing=False, 
+        write_to_node_table=True, 
+        **kwargs,
     ): 
+
+        """Maps network node names using mygene.info"""
 
         mg = mygene.MyGeneInfo()
         node_attributes = self.get_node_attributes()
@@ -114,25 +119,41 @@ class Network(ABC):
             field=to,
             as_dataframe=True, 
             returnall=True, 
-        #)[to].to_dict() 
+            **kwargs, 
         )
 
         gene_map = query_result['out'][to].to_dict()
 
-        missing_map = {}
-        if query_result['missing']: 
-            warnings.warn('Some nodes cannot be converted. Their original name will be kept!')
+        missing = query_result['missing']
+        if missing: 
+            if rerun_query: 
+                sec_query_df = mg.getgenes(
+                    query_result['missing'], 
+                    fields='%s,%s' % (current, to),
+                    as_dataframe=True
+                )
 
-            for i in query_result['missing']: 
-                gene_map[i] = i
+                missing = sec_query_df.loc[sec_query_df['notfound'] == True].index
 
-        change_to = {
-            to: {
-                k: gene_map.get(v[attribute], k if use_key_for_missing else None) for k,v in node_attributes.items()
-            }
-        }
+                gene_map.update(sec_query_df[to].to_dict())
 
-        self.set_node_attributes(change_to, namespace="nodeids")
+            if len(missing) != 0: 
+                warnings.warn('%s nodes cannot be converted. Their original name will be kept!' % len(missing))
+
+                for i in missing: 
+                    gene_map[i] = i
+
+        if query_result['dup']: 
+            warnings.warn("Gene name conversion contains duplicate mappings!")
+
+        change_to = {}
+        for k,v in node_attributes.items(): 
+            change_to[k] = gene_map.get(v[attribute], k if use_key_for_missing else None)
+
+        self.set_node_attributes({to:change_to}, namespace="nodeids")
+
+        if write_to_node_table: 
+            self.refresh_node_table()
 
         return self
 
@@ -175,6 +196,23 @@ class Network(ABC):
 
         return self
 
+    def __getstate__(self): 
+        return self.__dict__
+
+    def __setstate__(self, state): 
+        self.__dict__.update(state)        
+
+    def to_pickle(self, filename): 
+        with open(filename, 'wb') as f: 
+            pickle.dump(self, f) 
+
+
+    @classmethod
+    def from_pickle(cls, filename): 
+        with open(filename, 'rb') as f: 
+            obj = pickle.load(f) 
+
+        return obj
 
 class NxNetwork(Network): 
     """Internal object to expose networkx functionalities"""

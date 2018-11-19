@@ -138,13 +138,19 @@ class Nbgwas(object):
         window_size=0,
         agg_method='min',
     ): 
-        g = self.snps.assign_snps_to_genes(
+        """Maps SNP p-values to genes
+
+        This is a convenience function for the functionality within the `Snps` 
+        object. The output is forced to be a `Genes` object and is automatically 
+        assigned to Nbgwas.genes. 
+
+        See `Snps.assign_snps_to_genes` for documentation.
+        """
+        self.genes = self.snps.assign_snps_to_genes(
             window_size=window_size, 
             agg_method=agg_method, 
             to_Gene=True
         )
-
-        self.genes = g
 
         return self
 
