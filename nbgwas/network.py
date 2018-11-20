@@ -582,3 +582,43 @@ class IgNetwork(Network):
             self.network.vs[attr_name] = attr
 
         return self
+
+    def collapse_duplicate_nodes(self, attribute, inplace=False): 
+        if not inplace: 
+            g = self.network.copy()
+        else:
+            g = self.network
+        
+        duplicated_nodes_table = self.node_table.loc[
+            self.node_table[attribute].duplicated(keep=False)
+        ]
+        
+        counter = len(g.vs)
+        nodemap = {}
+        for a, df in duplicated_nodes_table.groupby(attribute): 
+            for ind, i in enumerate(df.index): 
+                if ind == 0: 
+                    g.add_vertex(**g.vs[i].attributes())
+                    
+                nodemap[i] = counter
+                
+            counter += 1
+            
+        nodeslist = list(nodemap.keys())
+
+        source = set([e.tuple for e in g.es.select(_source_in=nodeslist)])
+        target = set([e.tuple for e in g.es.select(_target_in=nodeslist)])
+        affected_edges = source.union(target)
+        
+        new_edges = [(nodemap.get(i,i), nodemap.get(j,j)) for i,j in affected_edges]
+        new_edges = [(i,j) for i,j in new_edges if i != j]
+        
+        g.add_edges(new_edges)       
+        
+        g.delete_edges(affected_edges)
+        g.delete_vertices(nodeslist)
+            
+        self.network = g
+        self.refresh_node_table()
+
+        return self
