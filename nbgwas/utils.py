@@ -74,3 +74,20 @@ def neg_log_val(a, floor=None):
         vals[vals < floor] = 0
 
     return vals
+
+def calculate_alpha(n_edges, m=-0.02935302, b=0.74842057):
+    """Calculate optimal propagation coefficient
+
+    Model from Huang and Carlin et al 2018
+    """
+    log_edge_count = np.log10(n_edges)
+    alpha_val = round(m*log_edge_count+b,3)
+    
+    if alpha_val <=0:
+        # There should never be a case where Alpha >= 1, 
+        # as avg node degree will never be negative
+
+        raise ValueError('Alpha <= 0 - Network Edge Count is too high')
+
+    else:
+        return 1 - alpha_val

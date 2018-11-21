@@ -60,6 +60,14 @@ class Network(ABC):
         pass 
 
     @abstractmethod
+    def nodes(self): 
+        pass 
+
+    @abstractmethod
+    def edges(self): 
+        pass
+
+    @abstractmethod
     def subgraph(self):
         pass 
 
@@ -179,6 +187,12 @@ class Network(ABC):
 
         return self._node_table
 
+    @node_table.setter 
+    def node_table(self, node_table): 
+        #TODO: Add Validation code here
+
+        self._node_table = node_table
+
     @node_table.deleter
     def node_table(self): 
         if hasattr(self, "_node_table"): 
@@ -278,6 +292,14 @@ class NxNetwork(Network):
         self._laplacian_matrix = nx.laplacian_matrix(self.network, weight=weights)
 
         return self  
+
+
+    def nodes(self): 
+        return self.network.nodes()
+
+    
+    def edges(self): 
+        return self.network.edges()
 
 
     def subgraph(self, node_ids=None, node_names=None): 
@@ -546,6 +568,12 @@ class IgNetwork(Network):
         self._laplacian_matrix = D - self.adjacency_matrix
 
         return self
+
+    def nodes(self): 
+        return self.network.vs
+
+    def edges(self): 
+        return self.network.es
     
     def subgraph(self, node_ids=None, node_names=None): 
         if node_names is not None and node_ids is not None: 
@@ -583,42 +611,50 @@ class IgNetwork(Network):
 
         return self
 
-    def collapse_duplicate_nodes(self, attribute, inplace=False): 
-        if not inplace: 
-            g = self.network.copy()
-        else:
-            g = self.network
+    # def collapse_duplicate_nodes(self, attribute, inplace=False): 
+    #     """Collapse any nodes with the same attribute into a single node"""
         
-        duplicated_nodes_table = self.node_table.loc[
-            self.node_table[attribute].duplicated(keep=False)
-        ]
+    #     if not inplace: 
+    #         g = self.network.copy()
+    #     else:
+    #         g = self.network
         
-        counter = len(g.vs)
-        nodemap = {}
-        for a, df in duplicated_nodes_table.groupby(attribute): 
-            for ind, i in enumerate(df.index): 
-                if ind == 0: 
-                    g.add_vertex(**g.vs[i].attributes())
+    #     duplicated_nodes_table = self.node_table.loc[
+    #         self.node_table[attribute].duplicated(keep=False)
+    #     ]
+        
+    #     counter = len(g.vs)
+    #     nodemap = {}
+    #     for a, df in duplicated_nodes_table.groupby(attribute): 
+    #         for ind, i in enumerate(df.index): 
+    #             if ind == 0: 
+    #                 g.add_vertex(**g.vs[i].attributes())
                     
-                nodemap[i] = counter
+    #             nodemap[i] = counter
                 
-            counter += 1
+    #         counter += 1
             
-        nodeslist = list(nodemap.keys())
+    #     nodeslist = list(nodemap.keys())
 
-        source = set([e.tuple for e in g.es.select(_source_in=nodeslist)])
-        target = set([e.tuple for e in g.es.select(_target_in=nodeslist)])
-        affected_edges = source.union(target)
+    #     source = set([e.tuple for e in g.es.select(_source_in=nodeslist)])
+    #     target = set([e.tuple for e in g.es.select(_target_in=nodeslist)])
+    #     affected_edges = source.union(target)
         
-        new_edges = [(nodemap.get(i,i), nodemap.get(j,j)) for i,j in affected_edges]
-        new_edges = [(i,j) for i,j in new_edges if i != j]
+    #     new_edges = [(nodemap.get(i,i), nodemap.get(j,j)) for i,j in affected_edges]
+    #     new_edges = [(i,j) for i,j in new_edges if i != j]
+
+    #     return new_edges, affected_edges, nodeslist
         
-        g.add_edges(new_edges)       
+    #     g.add_edges(new_edges)       
         
-        g.delete_edges(affected_edges)
-        g.delete_vertices(nodeslist)
+    #     g.delete_edges(affected_edges)
+    #     g.delete_vertices(nodeslist)
             
-        self.network = g
-        self.refresh_node_table()
+    #     if inplace: 
+    #         self.network = g
+    #         self.refresh_node_table()
 
-        return self
+    #         return self
+        
+    #     else: 
+    #         return g

@@ -13,7 +13,7 @@ from .assign_snps_to_genes import assign_snps_to_genes
 from .network import Network, NxNetwork, IgNetwork
 from .tables import Genes, Snps
 from .propagation import random_walk_rst, get_common_indices, heat_diffusion
-from .utils import get_neighbors, binarize, neg_log_val
+from .utils import get_neighbors, binarize, neg_log_val, calculate_alpha
 
 
 class Nbgwas(object):
@@ -123,7 +123,7 @@ class Nbgwas(object):
             self._network = IgNetwork(network, node_name=self._node_name)
 
         elif isinstance(network, Network): 
-            self.network = network
+            self._network = network
         
         else: 
             raise ValueError("Graph type is not understood. Must be a networkx object or an igraph object")
@@ -155,7 +155,7 @@ class Nbgwas(object):
         return self
 
 
-    def map_to_node_table(self, columns=None, update_node_attributes=False): 
+    def map_to_node_table(self, columns=None, update_node_attributes=False, fillna=0): 
         """Maps information from gene table to network
 
         Parameter
@@ -169,15 +169,50 @@ class Nbgwas(object):
         elif columns is None: 
             columns = self.genes.table.columns
 
-        idx, gs = [], []
+        # # idx, gs = [], []
+        # # for ind, gene in self.genes.table[self.genes.name_col].items(): 
+        # #     if gene in self.network.node_names: 
+        # #         idx.append(ind)
+        # #         gs.append(gene)
 
-        for ind, gene in self.genes.table[self.genes.name_col].items(): 
-            if gene in self.network.node_names: 
-                idx.append(ind)
-                gs.append(gene)
+        # # tmp = self.genes.table.loc[idx, columns]
+        # # tmp.index = gs
 
-        tmp = self.genes.table.loc[idx, columns]
-        tmp.index = gs
+        # tmp = self.genes.table.loc[:, [self.genes.name_col] + columns]
+        # tmp = tmp.set_index(self.genes.name_col)
+        # tmp = tmp.reindex(self.network.node_table[self.network.node_name])
+        # tmp = tmp.reset_index()
+
+        # # self.network.node_table = self.network.node_table.merge(
+        # #     tmp, 
+        # #     how='left',
+        # #     left_on=self.network.node_name, 
+        # #     right_on=self.network.node_name,
+        # #     copy=False
+        # # )
+
+        # for col in columns: 
+        #     self.network.node_table = self.network.node_table.assign(NEWCOL=tmp.loc[:, col])
+        #     self.network.node_table.columns = [
+        #         i if i != 'NEWCOL' else col for i in self.network.node_table.columns
+        #     ]
+
+        # Remove extra column merge seems to include
+        remove=False
+        if self.genes.name_col not in self.network.node_table.columns: 
+            remove=True
+
+        self.network.node_table = self.network.node_table.merge(
+            self.genes.table[[self.genes.name_col] + columns], 
+            left_on = self.network.node_name, 
+            right_on = self.genes.name_col, 
+            how='left'
+        )
+
+        if remove and self.genes.name_col in self.network.node_table.columns: 
+            self.network.node_table.drop(columns=self.genes.name_col, inplace=True)
+
+        self.network.node_table.fillna(fillna, inplace=True)
 
         if update_node_attributes: 
             self.network.set_node_attributes(tmp.to_dict(), namespace='nodenames')
@@ -189,20 +224,27 @@ class Nbgwas(object):
     def map_to_gene_table(self, columns, fill_value=0): 
         """Maps columns from node_table to gene table"""
 
-        df = self.network.node_table.copy()
-        df = df.set_index(self.network.node_name)
-        df = df[columns]
+        # df = self.network.node_table.copy()
+        # df = df.set_index(self.network.node_name)
+        # df = df[columns]
 
-        gtable = self.genes.table.copy()
-        gtable = gtable.set_index(self.genes.name_col) 
+        # gtable = self.genes.table.copy()
+        # gtable = gtable.set_index(self.genes.name_col) 
 
-        ind = gtable.index
+        # ind = gtable.index
 
-        self.genes.table = pd.concat(
-            [gtable, df.reindex(ind, fill_value=fill_value)],
-            axis=1, 
-            sort=False,
-        ).reset_index()
+        # self.genes.table = pd.concat(
+        #     [gtable, df.reindex(ind, fill_value=fill_value)],
+        #     axis=1, 
+        #     sort=False,
+        # ).reset_index()
+
+        self.genes.table = self.genes.table.merge(
+            self.network.node_table[[self.network.node_name] + columns],
+            left_on=self.genes.name_col, 
+            right_on=self.network.node_name, 
+            how='left'
+        )
 
         return self
 
@@ -315,13 +357,16 @@ class Nbgwas(object):
         if not isinstance(node_attribute, list):
             node_attribute = [node_attribute]
 
+        if isinstance(alpha, str): 
+            alpha = calculate_alpha(len(self.network.edges()))
+
         sorted_idx = self.network.node_table.index.sort_values()
         F0 = self.network.node_table.loc[sorted_idx, node_attribute].values.T
         A = self.network.adjacency_matrix
 
         out = random_walk_rst(F0, A, alpha, normalize=normalize, axis=axis)
 
-        return np.array(out.todense()).ravel().tolist()
+        return np.array(out.todense()).ravel()
 
 
     def random_walk_with_kernel(self, node_attribute="Heat", kernel=None):
