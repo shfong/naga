@@ -152,14 +152,21 @@ def assign_snps_to_genes(
             assigned_pvals, 
             index=['nSNPS', 'TopSNP P-Value', 'TopSNP Position']).T
 
-        pc =  pc[~pc.index.duplicated(keep='first')] # TODO: Change this
+        gene_lengths = []
+        for val, df in pc.groupby(pc.index): 
+            tmp = df[['Start', 'End']].astype(str).values
+            gene_lengths.append((val, df['Chrom'].values[0], ','.join(['-'.join(i) for i in tmp.tolist()])))
+            
+        gene_lengths_df = pd.DataFrame(gene_lengths, columns=['Gene', 'Chrom', 'Start-End'])
+        gene_lengths_df = gene_lengths_df.set_index('Gene')
 
-        assigned_df = pd.concat([pc, assigned_df], axis=1, sort=True)
+        assigned_df = pd.concat([gene_lengths_df, assigned_df], axis=1, sort=True)
+
         assigned_df.index.name = 'Gene'
         assigned_df = assigned_df.reset_index()
 
-        assigned_df = assigned_df.loc[pd.notnull(assigned_df.iloc[:, -1])] #Remove genes that do not have 
-                                                                    #p-values
+        assigned_df = assigned_df.loc[pd.notnull(assigned_df.iloc[:, -1])] #Remove genes that do not have pvalues
+
 
         return assigned_df
 

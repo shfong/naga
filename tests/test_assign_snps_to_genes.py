@@ -3,7 +3,7 @@ from numpy.testing import assert_equal
 import pandas as pd
 import pytest
 from nbgwas import assign_snps_to_genes
-from nbgwas.nbgwas import _get_bins
+from nbgwas.assign_snps_to_genes import _get_bins
 
 """Tests for assign_snps_to_genes"""
 
