@@ -459,7 +459,7 @@ class Nbgwas(object):
             table_df = self.network.node_table
             name_col = self.network.node_name
 
-        sorted_genes = self.genes.table.sort_values(by=column, ascending=ascending)
+        sorted_genes =table_df.sort_values(by=column, ascending=ascending)
         sorted_genes = sorted_genes[name_col].values
         genes = sorted_genes[:top]
 
