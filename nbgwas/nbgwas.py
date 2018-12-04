@@ -193,7 +193,7 @@ class Nbgwas(object):
         return self
 
     
-    def map_to_gene_table(self, columns, fill_value=0): 
+    def map_to_gene_table(self, columns=None, fill_value=0): 
         """Maps columns from node_table to gene table"""
 
         def tmp_func(x): 
@@ -206,6 +206,16 @@ class Nbgwas(object):
             #else: 
             #    raise ValueError("Cannot both be Null")
 
+        if isinstance(columns, str): 
+            columns = [columns]
+        elif columns is None: 
+            columns = self.network.node_table.columns
+
+        # Remove extra column merge seems to include
+        remove=False
+        if self.network.node_name not in self.genes.table.columns: 
+            remove=True
+
         self.genes.table = self.genes.table.merge(
             self.network.node_table[[self.network.node_name] + columns],
             left_on=self.genes.name_col, 
@@ -217,6 +227,8 @@ class Nbgwas(object):
             [self.genes.name_col, self.network.node_name]
         ].agg(tmp_func, axis=1)
 
+        if remove and self.network.node_name in self.genes.table.columns: 
+            self.genes.table.drop(columns=self.network.node_name, inplace=True)
 
         return self
 
@@ -372,6 +384,7 @@ class Nbgwas(object):
         self, 
         gold, 
         column,
+        table='gene',
         top=100, 
         ngenes=20000,
         ascending=False
@@ -391,8 +404,15 @@ class Nbgwas(object):
             If the rank_col is None, the p-value is used.
         """
 
-        sorted_genes = self.genes.table.sort_values(by=column, ascending=ascending)
-        sorted_genes = sorted_genes[self.genes.name_col].values
+        if table == 'gene': 
+            table_df = self.genes.table 
+            name_col = self.genes.name_col
+        elif table == 'network': 
+            table_df = self.network.node_table
+            name_col = self.network.node_name
+
+        sorted_genes = table_df.sort_values(by=column, ascending=ascending)
+        sorted_genes = sorted_genes[name_col].values
         genes = sorted_genes[:top]
 
         intersect = set(genes).intersection(set(gold))
@@ -411,6 +431,7 @@ class Nbgwas(object):
         self, 
         gold, 
         column,
+        table='gene',
         top=100, 
         threshold=0.05,
         ascending=False
@@ -431,8 +452,15 @@ class Nbgwas(object):
             If the rank_col is None, the p-value is used.
         """
 
+        if table == 'gene': 
+            table_df = self.genes.table 
+            name_col = self.genes.name_col
+        elif table == 'network': 
+            table_df = self.network.node_table
+            name_col = self.network.node_name
+
         sorted_genes = self.genes.table.sort_values(by=column, ascending=ascending)
-        sorted_genes = sorted_genes[self.genes.name_col].values
+        sorted_genes = sorted_genes[name_col].values
         genes = sorted_genes[:top]
 
         return sum([gold.get(i, 1) < threshold for i in genes])
