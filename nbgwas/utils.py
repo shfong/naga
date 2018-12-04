@@ -53,7 +53,7 @@ def binarize(a, threshold=5e-8):
     return binned
 
 
-def neg_log_val(a, floor=None, ceiling=10.0):
+def neg_log_val(a, floor=None, ceiling=None):
     """Negative log of an array
 
     Parameters

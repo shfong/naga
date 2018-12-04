@@ -169,34 +169,6 @@ class Nbgwas(object):
         elif columns is None: 
             columns = self.genes.table.columns
 
-        # # idx, gs = [], []
-        # # for ind, gene in self.genes.table[self.genes.name_col].items(): 
-        # #     if gene in self.network.node_names: 
-        # #         idx.append(ind)
-        # #         gs.append(gene)
-
-        # # tmp = self.genes.table.loc[idx, columns]
-        # # tmp.index = gs
-
-        # tmp = self.genes.table.loc[:, [self.genes.name_col] + columns]
-        # tmp = tmp.set_index(self.genes.name_col)
-        # tmp = tmp.reindex(self.network.node_table[self.network.node_name])
-        # tmp = tmp.reset_index()
-
-        # # self.network.node_table = self.network.node_table.merge(
-        # #     tmp, 
-        # #     how='left',
-        # #     left_on=self.network.node_name, 
-        # #     right_on=self.network.node_name,
-        # #     copy=False
-        # # )
-
-        # for col in columns: 
-        #     self.network.node_table = self.network.node_table.assign(NEWCOL=tmp.loc[:, col])
-        #     self.network.node_table.columns = [
-        #         i if i != 'NEWCOL' else col for i in self.network.node_table.columns
-        #     ]
-
         # Remove extra column merge seems to include
         remove=False
         if self.genes.name_col not in self.network.node_table.columns: 
@@ -224,27 +196,27 @@ class Nbgwas(object):
     def map_to_gene_table(self, columns, fill_value=0): 
         """Maps columns from node_table to gene table"""
 
-        # df = self.network.node_table.copy()
-        # df = df.set_index(self.network.node_name)
-        # df = df[columns]
-
-        # gtable = self.genes.table.copy()
-        # gtable = gtable.set_index(self.genes.name_col) 
-
-        # ind = gtable.index
-
-        # self.genes.table = pd.concat(
-        #     [gtable, df.reindex(ind, fill_value=fill_value)],
-        #     axis=1, 
-        #     sort=False,
-        # ).reset_index()
+        def tmp_func(x): 
+            if pd.notnull(x[0]): 
+                return x[0]
+            
+            elif pd.notnull(x[1]): 
+                return x[1]
+            
+            #else: 
+            #    raise ValueError("Cannot both be Null")
 
         self.genes.table = self.genes.table.merge(
             self.network.node_table[[self.network.node_name] + columns],
             left_on=self.genes.name_col, 
             right_on=self.network.node_name, 
-            how='left'
+            how='outer'
         )
+
+        self.genes.table[self.genes.name_col] = self.genes.table[
+            [self.genes.name_col, self.network.node_name]
+        ].agg(tmp_func, axis=1)
+
 
         return self
 
@@ -330,7 +302,7 @@ class Nbgwas(object):
     def random_walk(
         self, 
         node_attribute='Heat', 
-        alpha=0.5, 
+        alpha='optimal', 
         normalize=True, 
         axis=1, 
     ):
@@ -369,58 +341,6 @@ class Nbgwas(object):
         return np.array(out.todense()).ravel()
 
 
-    def random_walk_with_kernel(self, node_attribute="Heat", kernel=None):
-        """Runs random walk with pre-computed kernel
-
-        This propagation method relies on a pre-computed kernel.
-
-        Parameters
-        ----------
-        kernel : str
-            Location of the kernel (expects to be in HDF5 format)
-        """
-
-        raise NotImplementedError
-
-        #TODO: Fix this 
-
-        # if not isinstance(node_attribute, list):
-        #     heat = [node_attribute]
-
-        # if isinstance(kernel, str):
-        #     self.kernel = pd.read_hdf(kernel)
-
-        # elif isinstance(kernel, pd.DataFrame):
-        #     self.kernel = kernel
-
-        # else:
-        #     raise ValueError("A kernel must be provided!")
-
-
-        # # if not hasattr(self, "heat"):
-        # #     warnings.warn(
-        # #         "Attribute heat is not found. Generating using the binarize method."
-        # #     )
-
-        # #     self.convert_to_heat()
-
-        # network_genes = list(self.kernel.index)
-
-        # # Not saving heat to object because the kernel index may not
-        # # match network's
-        # heat = self.heat[heat].reindex(network_genes).fillna(0)
-
-        # # Propagate with pre-computed kernel
-        # prop_val_matrix = np.dot(heat.values.T, self.kernel)
-        # prop_val_table = pd.DataFrame(
-        #     prop_val_matrix,
-        #     index = heat.columns,
-        #     columns = heat.index
-        # ).T
-
-        # return prop_val_table
-
-
     def heat_diffusion(self, node_attribute="Heat", t=0.1):
         """Runs heat diffusion without a pre-computed kernel
 
@@ -447,27 +367,6 @@ class Nbgwas(object):
 
         return out_vector
 
-    # def get_rank(self):
-    #     """Gets the ranking of each heat and pvalues"""
-
-    #     def convert_to_rank(series, name):
-    #         series = series.sort_values(ascending=True if name == "P-values" else False)
-
-    #         return pd.DataFrame(
-    #             np.arange(1, len(series) + 1),
-    #             index=series.index,
-    #             columns=[name]
-    #         )
-
-    #     ranks = []
-    #     for col in self.heat.columns:
-    #         ranks.append(convert_to_rank(self.heat[col], col))
-
-    #     ranks.append(convert_to_rank(self.pvalues[self.gene_cols['gene_pval_col']], "P-values"))
-
-    #     self.ranks = pd.concat(ranks, axis=1, sort=False)
-
-    #     return self
 
     def hypergeom(
         self, 
