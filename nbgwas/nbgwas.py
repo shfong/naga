@@ -164,10 +164,11 @@ class Nbgwas(object):
             If None, all columns will be added
         """
 
+        if columns is None: 
+            columns = list(self.genes.table.columns)
+
         if isinstance(columns, str): 
             columns = [columns] 
-        elif columns is None: 
-            columns = self.genes.table.columns
 
         # Remove extra column merge seems to include
         remove=False
