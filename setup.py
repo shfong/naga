@@ -47,9 +47,11 @@ setup(
             'ndex2', 
             'tables', #For hdf5 reads
             'python-igraph', 
-            'py2cytoscape', 
+            'py2cytoscape',
             'coverage',
             'pytest',
+            'mygene',
+            'scikit-learn',
             'sphinx' # This should make sphinx-build 
                      # available in the virtual environment
     ]
