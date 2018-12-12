@@ -54,5 +54,7 @@ setup(
             'scikit-learn',
             'sphinx' # This should make sphinx-build 
                      # available in the virtual environment
-    ]
+    ],
+    setup_requires=['pytest-runner'],
+    tests_require=['pytest']
 )
