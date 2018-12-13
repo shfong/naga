@@ -9,7 +9,6 @@ from scipy.stats import hypergeom
 import time
 import warnings
 
-from .assign_snps_to_genes import assign_snps_to_genes
 from .network import Network, NxNetwork, IgNetwork
 from .tables import Genes, Snps
 from .propagation import random_walk_rst, get_common_indices, heat_diffusion
@@ -183,10 +182,11 @@ class Nbgwas(object):
             If None, all columns will be added
         """
 
+        if columns is None: 
+            columns = list(self.genes.table.columns)
+
         if isinstance(columns, str): 
             columns = [columns] 
-        elif columns is None: 
-            columns = self.genes.table.columns
 
         # Remove extra column merge seems to include
         remove=False

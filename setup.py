@@ -12,46 +12,9 @@ if mo:
 else:
     raise RuntimeError("Unable to find version string in %s." % (VERSIONFILE,))
 
-"""Taken from Chris (coleslaw481) on github"""
 
-requirements = [
-    'argparse',
-    'requests',
-    'networkx==1.11', #ndex2 requires networks 1.11
-    'pandas',
-    'ndex2',
-    'flask',
-    'flask-restplus',
-    'numpy',
-    'matplotlib',
-    'pandas',
-    'scipy',
-    'seaborn',
-    'tables', #For hdf5 reads
-    'python-igraph',
-    'py2cytoscape'
-]
-
-setup_requirements = [ ]
-
-test_requirements = [
-    'argparse',
-    'requests',
-    'networkx==1.11', #ndex2 requires networks 1.11
-    'pandas',
-    'ndex2',
-    'flask',
-    'flask-restplus',
-    'numpy',
-    'matplotlib',
-    'pandas',
-    'scipy',
-    'seaborn',
-    'tables',  # For hdf5 reads
-    'python-igraph',
-    'py2cytoscape',
-    'unittest2'
-]
+with open('README.rst') as readme_file:
+    readme = readme_file.read()
 
 setup(
     name='nbgwas',
@@ -61,41 +24,44 @@ setup(
     author='Samson Fong',
     author_email='shfong@ucsd.edu',
     license='MIT',
+    long_description=readme,
     classifiers=[
         'Development Status :: 2 - Pre-Alpha',
         'Intended Audience :: Science/Research',
         'Topic :: Software Development :: Build Tools',
         'License :: OSI Approved :: MIT License',
+        'Programming Language :: Python :: 3.6',
+        'Programming Language :: Python :: 3.7',
     ],
     packages=find_packages(exclude=['os', 're', 'time']),
-    # install_requires=[
-    #         #Not sure why these packages were not automatically installed....
-    #         'ijson',
-    #         'requests', 
-    #         'pytz>=2011k',
-    #         'cycler>=0.10',
-    #         'kiwisolver>=1.0.1',
-    #         'pyparsing!=2.0.4,!=2.1.2,!=2.1.6,>=2.0.1', 
-    #         'pytz',
+    install_requires=[
+            #Not sure why these packages were not automatically installed....
+            'ijson',
+            'requests', 
+            'pytz>=2011k',
+            'cycler>=0.10',
+            'kiwisolver>=1.0.1',
+            'pyparsing!=2.0.4,!=2.1.2,!=2.1.6,>=2.0.1', 
+            'pytz',
 
-    #         #Main packages that are needed
-    #         'networkx==1.11', #ndex2 requires networks 1.11
-    #         'numpy',
-    #         'matplotlib',
-    #         'pandas',
-    #         'scipy',
-    #         'seaborn', 
-    #         'ndex2', 
-    #         'tables', #For hdf5 reads
-    #         'python-igraph', 
-    #         'py2cytoscape', 
-    #         'coverage',
-    #         'pytest',
-    #         'sphinx' # This should make sphinx-build 
-    #                  # available in the virtual environment
-    # ]
-    install_requires=requirements, 
-    setup_requires=setup_requirements,
-    test_suite='tests',
-    tests_require=test_requirements,
+            #Main packages that are needed
+            'networkx==1.11', #ndex2 requires networks 1.11
+            'numpy',
+            'matplotlib',
+            'pandas',
+            'scipy',
+            'seaborn', 
+            'ndex2', 
+            'tables', #For hdf5 reads
+            'python-igraph', 
+            'py2cytoscape',
+            'coverage',
+            'pytest',
+            'mygene',
+            'scikit-learn',
+            'sphinx' # This should make sphinx-build 
+                     # available in the virtual environment
+    ],
+    setup_requires=['pytest-runner'],
+    tests_require=['pytest']
 )

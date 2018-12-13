@@ -132,7 +132,13 @@ class Genes(object):
         if method == 'binarize':
             heat = binarize(self.pvalues, threshold=kwargs.get('threshold', 5e-6))
         elif method == 'neg_log':
-            heat = neg_log_val(self.pvalues, floor=kwargs.get('floor', None))
+            heat = neg_log_val(
+                self.pvalues, 
+                floor=kwargs.get('floor', None), 
+                ceiling=kwargs.get('ceiling', None)
+            )
+            
+            #TODO: Why is this not ```heat = neg_log_val(self.pvalues, **kwargs)```
 
         if normalize is not None: 
             heat = (heat/heat.sum())*normalize
