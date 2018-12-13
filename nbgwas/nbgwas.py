@@ -9,7 +9,6 @@ from scipy.stats import hypergeom
 import time
 import warnings
 
-from .assign_snps_to_genes import assign_snps_to_genes
 from .network import Network, NxNetwork, IgNetwork
 from .tables import Genes, Snps
 from .propagation import random_walk_rst, get_common_indices, heat_diffusion
