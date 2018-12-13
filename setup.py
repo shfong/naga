@@ -48,7 +48,7 @@ setup(
             'networkx==1.11', #ndex2 requires networks 1.11
             'numpy',
             'matplotlib',
-            'pandas',
+            'pandas>=0.23.0',
             'scipy',
             'seaborn', 
             'ndex2', 
