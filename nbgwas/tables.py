@@ -36,6 +36,16 @@ class Genes(object):
         self._validate()
 
 
+    def __repr__(self): 
+        if self.table is not None: 
+            length = self.table.shape[0]
+
+        else: 
+            length = 0
+
+        return f'<{self.__class__.__name__}> object containing {length} genes'
+
+
     def from_file(
         self, 
         path, 
@@ -214,6 +224,9 @@ class Snps(object):
         self.end_col = end_col
 
         self._validate()
+        
+    def __repr__(self): 
+        return f'<{self.__class__.__name__}> object'
         
 
     def from_files(

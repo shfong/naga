@@ -94,6 +94,25 @@ class Nbgwas(object):
         self.network = network
 
 
+    def __repr__(self): 
+        contains = []
+        if self.genes.table is not None: 
+            contains.append('"genes table"') 
+
+        if self.snps.snp_table is not None: 
+            contains.append('"SNP table"')
+
+        if self.network.network is not None: 
+            contains.append('"network"')
+
+        if not contains: 
+            contains = 'Nothing'
+
+        else: 
+            contains = ', '.join(contains)
+
+        return f'{self.__class__.__name__} object containing {contains}'
+
 
     @property
     def network(self):
