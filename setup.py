@@ -12,6 +12,10 @@ if mo:
 else:
     raise RuntimeError("Unable to find version string in %s." % (VERSIONFILE,))
 
+
+with open('README.rst') as readme_file:
+    readme = readme_file.read()
+
 setup(
     name='nbgwas',
     version=verstr,
@@ -20,11 +24,14 @@ setup(
     author='Samson Fong',
     author_email='shfong@ucsd.edu',
     license='MIT',
+    long_description=readme,
     classifiers=[
         'Development Status :: 2 - Pre-Alpha',
         'Intended Audience :: Science/Research',
         'Topic :: Software Development :: Build Tools',
         'License :: OSI Approved :: MIT License',
+        'Programming Language :: Python :: 3.6',
+        'Programming Language :: Python :: 3.7',
     ],
     packages=find_packages(exclude=['os', 're', 'time']),
     install_requires=[
