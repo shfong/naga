@@ -1,7 +1,7 @@
-Network-Boosted GWAS (NBGWAS)
+Network Assisted Genomic Analysis (NAGA)
 =============================
 
-The network-boosed GWAS package re-prioritizes significant single
+Network Assisted Genomic Analysis re-prioritizes significant single
 nucleotide polymorphisms (SNPs) to genes using network diffusion methods
 including random walk and heat diffusion.
 
