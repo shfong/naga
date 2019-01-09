@@ -3,7 +3,9 @@ Network Assisted Genomic Analysis (NAGA)
 
 Network Assisted Genomic Analysis re-prioritizes significant single
 nucleotide polymorphisms (SNPs) to genes using network diffusion methods
-including random walk and heat diffusion.
+including random walk and heat diffusion. 
+
+A companion website and REST API can be found at http://nbgwas.ucsd.edu/.
 
 Documentation
 =============
