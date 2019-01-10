@@ -55,8 +55,7 @@ setup(
             'scipy',
             'seaborn', 
             'ndex2', 
-            'tables', #For hdf5 reads
-            'python-igraph', 
+            'python-igraph',
             'py2cytoscape',
             'coverage',
             'pytest',
