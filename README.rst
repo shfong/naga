@@ -1,7 +1,7 @@
 Network Assisted Genomic Analysis (NAGA)
-=============================
+========================================
 
-Network Assisted Genomic Analysis re-prioritizes significant single
+Network Assisted Genomic Analysis(NAGA) re-prioritizes significant single
 nucleotide polymorphisms (SNPs) to genes using network diffusion methods
 including random walk and heat diffusion. 
 
@@ -23,20 +23,26 @@ and open the index.html in the docs/build/html directory.
 Installation
 ============
 
-This package will soon be pip installable. In the mean time, you can
-install the package by running the following
+It is recommended that NAGA be run under Anaconda_ with python-igraph_ manually installed using **conda**
+
+
+To install NAGA via pip:
 
 .. code:: bash
+    
+    pip install naga-gwas
 
-    python setup.py install 
 
 Tutorial
 ========
 
-``notebooks/pipelin.ipynb`` demonstrates how to use this package once it
+``notebooks/tutorial.ipynb`` demonstrates how to use this package once it
 is installed.
 
-Citing NBGWAS
+Citing NAGA
 =============
 
 Publication to come...
+
+.. _Anaconda: https://anaconda.org
+.. _python-igraph: https://anaconda.org/conda-forge/python-igraph
