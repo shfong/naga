@@ -24,6 +24,20 @@ Installation
 ============
 
 It is recommended that NAGA be run under Anaconda_ with python-igraph_ manually installed using **conda**
+and to create a new conda environment
+
+
+To create a new **conda** environment:
+
+.. code:: bash
+
+   conda create -n nagaenv
+
+To install python-igraph_ via **conda**:
+
+.. code:: bash
+
+   conda install -c conda-forge python-igraph
 
 
 To install NAGA via pip:
