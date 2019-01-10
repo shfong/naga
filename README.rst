@@ -51,7 +51,7 @@ To install NAGA via pip:
 Tutorial
 ========
 
-``notebooks/tutorial.ipynb`` demonstrates how to use this package once it
+`notebooks/tutorial.ipynb <https://github.com/shfong/naga/blob/master/notebooks/tutorial.ipynb>`_ demonstrates how to use this package once it
 is installed.
 
 Citing NAGA
