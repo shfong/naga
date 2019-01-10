@@ -16,6 +16,9 @@ else:
 with open('README.rst') as readme_file:
     readme = readme_file.read()
 
+with open('HISTORY.rst') as history_file:
+    history = history_file.read()
+
 setup(
     name='naga-gwas',
     version=verstr,
@@ -24,7 +27,7 @@ setup(
     author='Samson Fong',
     author_email='shfong@ucsd.edu',
     license='MIT',
-    long_description=readme,
+    long_description=readme + '\n\n' + history,
     classifiers=[
         'Development Status :: 2 - Pre-Alpha',
         'Intended Audience :: Science/Research',
