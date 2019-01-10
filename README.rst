@@ -27,11 +27,12 @@ It is recommended that NAGA be run under Anaconda_ with python-igraph_ manually 
 and to create a new conda environment
 
 
-To create a new **conda** environment:
+To create a new **conda** environment and activate it:
 
 .. code:: bash
 
    conda create -n nagaenv
+   source activate nagaenv
 
 To install python-igraph_ via **conda**:
 
