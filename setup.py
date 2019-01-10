@@ -23,7 +23,7 @@ setup(
     name='naga-gwas',
     version=verstr,
     description='Network Assisted Genomic Association',
-    url='https://github.com/shfong/nbgwas',
+    url='https://github.com/shfong/naga',
     author='Samson Fong',
     author_email='shfong@ucsd.edu',
     license='MIT',
