@@ -17,9 +17,9 @@ with open('README.rst') as readme_file:
     readme = readme_file.read()
 
 setup(
-    name='nbgwas',
+    name='naga-gwas',
     version=verstr,
-    description='Network-boosted genome-wide association studies',
+    description='Network Assisted Genomic Association',
     url='https://github.com/shfong/nbgwas',
     author='Samson Fong',
     author_email='shfong@ucsd.edu',
