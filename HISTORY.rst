@@ -2,6 +2,12 @@
 History
 =======
 
+0.4.1.post1 (2019-01-24)
+------------------------
+
+* Added link to tutorial notebook in long description
+
+
 0.4.1 (2019-01-09)
 ------------------
 
