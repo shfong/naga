@@ -33,6 +33,15 @@ To create a new **conda** environment and activate it:
 
    conda create -n nagaenv
    source activate nagaenv
+   
+If you would like to use **naga** in a Jupyter Notebook, you will need to add the Jupyter kernel. To do so: 
+
+.. code:: bash 
+   
+   # Make sure to activate the environment first!
+   conda install ipykernel # or pip install ipykernel
+   python -m ipykernel install --user --name nagaenv --display-name "Python (Naga)"
+   
 
 To install python-igraph_ via **conda**:
 
