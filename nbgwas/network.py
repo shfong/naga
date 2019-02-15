@@ -228,6 +228,24 @@ class Network(ABC):
 
         return obj
 
+
+    def subgraph_by_top_nodes(self, attr, top): 
+        """Get subgraph by taking the top n nodes"""
+
+        attr_map = self.get_node_attributes()
+
+        if attr in attr_map:
+            values = attr_map[attr].items()
+            sorted_values = sorted(values, key=lambda x:x[1], reverse=True)
+
+            top_nodes = [i for i,j in sorted_values[:top]] 
+
+        else: 
+            raise ValueError("Attribute was not found in the graph!")
+
+        return self.subgraph(node_ids=top_nodes)
+
+
 class NxNetwork(Network): 
     """Internal object to expose networkx functionalities"""
 
