@@ -66,7 +66,7 @@ is installed.
 Citing NAGA
 =============
 
-Publication to come...
+Carlin, Daniel E., Samson H. Fong, Yue Qin, Tongqiu Jia, Justin K. Huang, Bokan Bao, Chao Zhang, and Trey Ideker. "A Fast and Flexible Framework for Network-Assisted Genomic Association." iScience 16 (2019): 155.
 
 .. _Anaconda: https://anaconda.org
 .. _python-igraph: https://anaconda.org/conda-forge/python-igraph
