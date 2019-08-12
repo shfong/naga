@@ -492,11 +492,23 @@ class NxNetwork(Network):
         return fig, ax
 
 
-    def view_in_cytoscape(self):
-        """Ports graph to Cytoscape"""
+    def view_in_cytoscape(self, force_add_nodename=False):
+        """Ports graph to Cytoscape
+        
+        Parameters
+        ----------
+        force_add_nodename : bool
+            If True, a node attribute called `nodename` will be added. 
+            This seems to fix the bug the py2cytoscape has where it would
+            ignore the node names. 
+        """
 
         if not hasattr(self, "cyrest"):
             self.cyrest = CyRestClient()
+
+        if force_add_nodename:
+            nodenames = {n:d[self.node_name] for n,d in self.get_node_attributes().items()}
+            self.set_node_attributes({"nodename": nodenames}, namespace="nodeids")
 
         hdl = self.cyrest.network.create_from_networkx(self.network)
         self.cyrest.layout.apply(name='degree-circle', network=hdl)
